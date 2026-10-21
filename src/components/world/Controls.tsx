@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Mail, BookOpen, DoorOpen, UserRound, Hand } from "lucide-react";
+import { Mail, BookOpen, DoorOpen, UserRound, Hand, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { joy, triggerNearest } from "./player";
+import { joy, input, triggerNearest } from "./player";
 
 const KIND_ICON = { surat: Mail, narasi: BookOpen, portal: DoorOpen, orang: UserRound } as const;
 
@@ -181,5 +181,53 @@ export function ControlHint() {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+
+/** D-pad cadangan: bisa ditekan-tahan dengan mouse maupun jari */
+export function DPad() {
+  const hold = (f: number, r: number) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      e.preventDefault();
+      input.f = f;
+      input.r = r;
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    },
+    onPointerUp: () => {
+      input.f = 0;
+      input.r = 0;
+    },
+    onPointerLeave: () => {
+      input.f = 0;
+      input.r = 0;
+    },
+    onPointerCancel: () => {
+      input.f = 0;
+      input.r = 0;
+    },
+  });
+  const btn =
+    "flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 bg-black/45 text-[#f4ecdd] backdrop-blur-md transition active:scale-95 active:bg-[#f2cc8f] active:text-[#3a2d18] select-none touch-none";
+  return (
+    <div className="pointer-events-auto fixed bottom-6 right-5 z-[46] hidden select-none flex-col items-center gap-1.5 sm:flex">
+      <button className={btn} aria-label="Maju" {...hold(1, 0)}>
+        <ChevronUp size={19} />
+      </button>
+      <div className="flex gap-1.5">
+        <button className={btn} aria-label="Kiri" {...hold(0, -1)}>
+          <ChevronLeft size={19} />
+        </button>
+        <button className={btn} aria-label="Mundur" {...hold(-1, 0)}>
+          <ChevronDown size={19} />
+        </button>
+        <button className={btn} aria-label="Kanan" {...hold(0, 1)}>
+          <ChevronRight size={19} />
+        </button>
+      </div>
+      <div className="mt-0.5 rounded-full bg-black/40 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.2em] text-[#f4ecdd]/55 backdrop-blur">
+        atau WASD
+      </div>
+    </div>
   );
 }

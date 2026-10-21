@@ -12,6 +12,7 @@ import { PplPlazaScene, SchoolScene } from "./scenes/PplScene";
 import YonifScene from "./scenes/YonifScene";
 import BukitScene from "./scenes/BukitScene";
 import { PlayerRig, PlayerAvatar } from "./player";
+import { EBuildingCorridor, ClassroomInterior, SeminarHall, LibraryGround, LibraryFloor7, Floor7Room } from "./scenes/UkswIndoor";
 
 type Ctrl = { target: THREE.Vector3; update: () => void; enabled: boolean } | null;
 
@@ -54,8 +55,17 @@ const ATMO: Record<Hubs, {
   },
 };
 
-function Atmosphere({ scene }: { scene: Hubs }) {
+function Atmosphere({ scene, indoor }: { scene: Hubs; indoor?: boolean }) {
   const a = ATMO[scene];
+  if (indoor)
+    return (
+      <>
+        <color attach="background" args={["#1a1d22"]} />
+        <ambientLight intensity={1.15} />
+        <hemisphereLight args={["#fff4e0", "#4a453c", 0.9]} />
+        <directionalLight position={[6, 12, 8]} intensity={0.75} color="#fff3dc" />
+      </>
+    );
   return (
     <>
       {!a.sky && <color attach="background" args={[a.bg]} />}
@@ -84,9 +94,15 @@ export default function WorldCanvas() {
       className="touch-none"
     >
       <Suspense fallback={null}>
-        <Atmosphere scene={scene} />
+        <Atmosphere scene={scene} indoor={!!school?.startsWith("uksw:")} />
         {scene === "hub" && <HubScene />}
-        {scene === "uksw" && <UkswScene />}
+        {scene === "uksw" && !school && <UkswScene />}
+        {scene === "uksw" && school === "uksw:e-lorong" && <EBuildingCorridor />}
+        {scene === "uksw" && /^uksw:e10[2578]$/.test(school ?? "") && <ClassroomInterior room={(school ?? "").slice(5)} />}
+        {scene === "uksw" && school === "uksw:seminar" && <SeminarHall />}
+        {scene === "uksw" && school === "uksw:perpus" && <LibraryGround />}
+        {scene === "uksw" && school === "uksw:lt7" && <LibraryFloor7 />}
+        {scene === "uksw" && /^uksw:lt7-r[123]$/.test(school ?? "") && <Floor7Room room={(school ?? "").slice(5)} />}
         {scene === "ppl" && !school && <PplPlazaScene />}
         {scene === "ppl" && school && <SchoolScene schoolId={school} />}
         {scene === "yonif" && <YonifScene />}
@@ -98,9 +114,9 @@ export default function WorldCanvas() {
         makeDefault
         enableDamping
         dampingFactor={0.08}
-        minDistance={3.2}
-        maxDistance={18}
-        maxPolarAngle={Math.PI / 2 - 0.08}
+        minDistance={2.8}
+        maxDistance={school?.startsWith("uksw:") ? 22 : 20}
+        maxPolarAngle={school?.startsWith("uksw:") ? Math.PI / 2 - 0.42 : Math.PI / 2 - 0.08}
         minPolarAngle={0.25}
         enablePan={false}
         rotateSpeed={0.75}

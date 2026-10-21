@@ -9,8 +9,8 @@ import { useStore } from "@/store/useStore";
 import { UIOverlayFallback } from "@/components/world/loaders";
 
 const WorldCanvas = dynamic(() => import("@/components/world/WorldCanvas"), { ssr: false });
-import { HUD, Toasts, TransitionOverlay, NarasiModal, UcapanListModal } from "@/components/world/ui";
-import { Joystick, InteractPrompt, ControlHint } from "@/components/world/Controls";
+import { HUD, Toasts, TransitionOverlay, NarasiModal, UcapanListModal, MapMenu } from "@/components/world/ui";
+import { Joystick, InteractPrompt, ControlHint, DPad } from "@/components/world/Controls";
 import UcapanCard from "@/components/world/UcapanCard";
 import Finale from "@/components/world/Finale";
 import MomenSpesial, { EndingScreen } from "@/components/world/MomenSpesial";
@@ -125,7 +125,9 @@ function WorldInner() {
       {ready && canEnter && (
         <>
           <HUD />
+          <MapMenu />
           <Joystick />
+          <DPad />
           <InteractPrompt />
           <ControlHint />
           <UcapanCard />

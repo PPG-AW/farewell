@@ -49,14 +49,30 @@ export function triggerNearest() {
 }
 
 // ─── pengaturan tiap zona ───────────────────────────────────────────────────
-export const SCENE_CFG: Record<string, { spawn: [number, number]; radius: number; camDist: number }> = {
+type SceneCfg = { spawn: [number, number]; radius?: number; rect?: [number, number, number, number]; camDist: number; indoor?: boolean };
+export const SCENE_CFG: Record<string, SceneCfg> = {
   hub: { spawn: [0, 11], radius: 25, camDist: 8 },
-  uksw: { spawn: [10, 24], radius: 46, camDist: 9 },
+  uksw: { spawn: [-30, 30], rect: [-44, 44, -46, 38], camDist: 9 },
   ppl: { spawn: [0, 16], radius: 34, camDist: 9 },
   "ppl-school": { spawn: [0, 14], radius: 30, camDist: 9 },
   yonif: { spawn: [0, 17], radius: 32, camDist: 9 },
   bukit: { spawn: [0, 15], radius: 26, camDist: 8.5 },
+  // ── interior kampus ──
+  "uksw:e-lorong": { spawn: [-16, 2.4], rect: [-19, 19, -2.6, 3.4], camDist: 11, indoor: true },
+  "uksw:e102": { spawn: [0, 5.6], rect: [-5.6, 5.6, -5.6, 6], camDist: 12, indoor: true },
+  "uksw:e105": { spawn: [0, 5.6], rect: [-5.6, 5.6, -5.6, 6], camDist: 12, indoor: true },
+  "uksw:e107": { spawn: [0, 5.6], rect: [-5.6, 5.6, -5.6, 6], camDist: 12, indoor: true },
+  "uksw:e108": { spawn: [0, 5.6], rect: [-5.6, 5.6, -5.6, 6], camDist: 12, indoor: true },
+  "uksw:seminar": { spawn: [0, 10], rect: [-10, 10, -10, 11], camDist: 15, indoor: true },
+  "uksw:perpus": { spawn: [0, 9], rect: [-10, 10, -9, 9.5], camDist: 14, indoor: true },
+  "uksw:lt7": { spawn: [-13, 1.4], rect: [-15, 15, -2.2, 2.8], camDist: 10, indoor: true },
+  "uksw:lt7-r1": { spawn: [0, 3.4], rect: [-3.8, 3.8, -3.8, 3.8], camDist: 9, indoor: true },
+  "uksw:lt7-r2": { spawn: [0, 3.4], rect: [-3.8, 3.8, -3.8, 3.8], camDist: 9, indoor: true },
+  "uksw:lt7-r3": { spawn: [0, 3.4], rect: [-3.8, 3.8, -3.8, 3.8], camDist: 9, indoor: true },
 };
+export function sceneKey(scene: string, sub: string | null) {
+  return sub ? (sub.startsWith("uksw:") ? sub : scene === "ppl" ? "ppl-school" : scene) : scene;
+}
 
 type Ctrl = { target: THREE.Vector3; update: () => void; enabled: boolean } | null;
 
@@ -72,7 +88,7 @@ export function PlayerRig({ controls }: { controls: React.MutableRefObject<Ctrl>
   const prevTarget = useRef(new THREE.Vector3());
   const lastNearby = useRef<string | null>(null);
 
-  const key = scene === "ppl" && school ? "ppl-school" : scene;
+  const key = sceneKey(scene, school);
   const cfg = SCENE_CFG[key] ?? SCENE_CFG.hub;
   const blocked = !!activeUcapan || !!narasi || overlay !== "none" || listOpen;
 
@@ -101,12 +117,14 @@ export function PlayerRig({ controls }: { controls: React.MutableRefObject<Ctrl>
       input.r = 0;
       input.run = false;
     };
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
+    document.addEventListener("keydown", down);
+    document.addEventListener("keyup", up);
     window.addEventListener("blur", blur);
+    // pastikan dokumen menerima input papan ketik
+    try { window.focus(); } catch { /* noop */ }
     return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
+      document.removeEventListener("keydown", down);
+      document.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
     };
   }, []);
@@ -120,7 +138,8 @@ export function PlayerRig({ controls }: { controls: React.MutableRefObject<Ctrl>
     input.r = 0;
     const tgt = new THREE.Vector3(player.pos.x, 1.2, player.pos.z);
     prevTarget.current.copy(tgt);
-    camera.position.set(tgt.x, tgt.y + cfg.camDist * 0.55, tgt.z + cfg.camDist);
+    const hi = cfg.indoor ? 0.95 : 0.55;
+    camera.position.set(tgt.x, tgt.y + cfg.camDist * hi, tgt.z + cfg.camDist * (cfg.indoor ? 0.75 : 1));
     if (controls.current) {
       controls.current.target.copy(tgt);
       controls.current.update();
@@ -164,11 +183,16 @@ export function PlayerRig({ controls }: { controls: React.MutableRefObject<Ctrl>
       move.normalize();
       const speed = (input.run ? 7.6 : 4.4) * mag;
       player.pos.addScaledVector(move, speed * dt);
-      // batas area
-      const d = Math.hypot(player.pos.x, player.pos.z);
-      if (d > cfg.radius) {
-        player.pos.x = (player.pos.x / d) * cfg.radius;
-        player.pos.z = (player.pos.z / d) * cfg.radius;
+      // batas area (lingkaran atau kotak untuk ruangan)
+      if (cfg.rect) {
+        player.pos.x = Math.min(cfg.rect[1], Math.max(cfg.rect[0], player.pos.x));
+        player.pos.z = Math.min(cfg.rect[3], Math.max(cfg.rect[2], player.pos.z));
+      } else if (cfg.radius) {
+        const d = Math.hypot(player.pos.x, player.pos.z);
+        if (d > cfg.radius) {
+          player.pos.x = (player.pos.x / d) * cfg.radius;
+          player.pos.z = (player.pos.z / d) * cfg.radius;
+        }
       }
       const wantYaw = Math.atan2(move.x, move.z);
       let diff = wantYaw - player.yaw;

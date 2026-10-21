@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpen, Home, Volume2, VolumeX, Mail, Search, LogOut, Sparkles, X,
-  Landmark, GraduationCap, Tent, Mountain, MapPin, Film, Camera, EyeOff, Eye, Star, ScrollText,
+  Landmark, GraduationCap, Tent, Mountain, Film, Camera, EyeOff, Eye, Star, ScrollText, Map, DoorOpen, ArrowUpDown,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { HUB_META, SEKOLAH_LIST, MOODS } from "@/lib/constants";
@@ -204,6 +204,111 @@ export function UcapanListModal() {
   );
 }
 
+// ─── Menu Peta / pindah cepat ───────────────────────────────────────────────
+const ZONA_LIST = [
+  { id: "hub", label: "Hub Utama", icon: Home, warna: "#f2cc8f" },
+  { id: "uksw", label: "Kampus UKSW", icon: Landmark, warna: "#8ecae6" },
+  { id: "ppl", label: "Area PPL", icon: GraduationCap, warna: "#81b29a" },
+  { id: "yonif", label: "Yonif 411", icon: Tent, warna: "#c75146" },
+  { id: "bukit", label: "Bukit Salatiga", icon: Mountain, warna: "#f2a93b" },
+] as const;
+
+const UKSW_DALAM = [
+  { sub: "uksw:e-lorong", label: "Lorong Gedung E" },
+  { sub: "uksw:e102", label: "Ruang E102" },
+  { sub: "uksw:e105", label: "Ruang E105" },
+  { sub: "uksw:e107", label: "Ruang E107" },
+  { sub: "uksw:e108", label: "Ruang E108" },
+  { sub: "uksw:seminar", label: "Aula Seminar Lt.2" },
+  { sub: "uksw:perpus", label: "Perpustakaan Lt.1" },
+  { sub: "uksw:lt7", label: "Lorong Lantai 7" },
+  { sub: "uksw:lt7-r1", label: "R-701 Diskusi Biru" },
+  { sub: "uksw:lt7-r2", label: "R-702 Baca Panorama" },
+  { sub: "uksw:lt7-r3", label: "R-703 Arsip Angkatan" },
+];
+
+export function MapMenu() {
+  const [open, setOpen] = useState(false);
+  const goScene = useStore((s) => s.goScene);
+  const scene = useStore((s) => s.scene);
+  const school = useStore((s) => s.school);
+  const hideUI = useStore((s) => s.hideUI);
+  if (hideUI) return null;
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={clsx(
+          "pointer-events-auto fixed left-3 top-[150px] z-[48] flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 backdrop-blur-md transition sm:left-5 sm:top-[176px]",
+          open ? "border-[#f2cc8f] bg-[#f2cc8f]/20 text-[#f2cc8f]" : "border-white/15 bg-black/50 text-[#f4ecdd]/85 hover:text-white"
+        )}
+      >
+        <Map size={14} />
+        <span className="text-[11px] font-bold">Peta & Pindah</span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -12 }}
+            className="pointer-events-auto fixed left-3 top-[198px] z-[48] w-[232px] rounded-2xl border border-white/15 bg-[#17130f]/92 p-3 shadow-2xl backdrop-blur-md sm:left-5 sm:top-[224px]"
+          >
+            <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.28em] text-[#f2cc8f]/80">Zona Utama</div>
+            <div className="grid grid-cols-1 gap-1">
+              {ZONA_LIST.map((z) => {
+                const Ic = z.icon;
+                const aktif = scene === z.id && !school;
+                return (
+                  <button
+                    key={z.id}
+                    onClick={() => {
+                      setOpen(false);
+                      goScene(z.id as never);
+                    }}
+                    className={clsx(
+                      "flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-[11px] font-bold transition",
+                      aktif ? "bg-white/15 text-white" : "text-[#f4ecdd]/80 hover:bg-white/10"
+                    )}
+                  >
+                    <Ic size={13} style={{ color: z.warna }} /> {z.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mb-1.5 mt-3 flex items-center gap-1.5 border-t border-white/10 pt-2.5 text-[9px] font-black uppercase tracking-[0.22em] text-[#8ecae6]/85">
+              <DoorOpen size={11} /> Dalam Gedung UKSW
+            </div>
+            <div className="max-h-[32vh] space-y-1 overflow-y-auto pr-1">
+              {UKSW_DALAM.map((r) => (
+                <button
+                  key={r.sub}
+                  onClick={() => {
+                    setOpen(false);
+                    goScene("uksw", { school: r.sub, label: r.label, warna: "#8ecae6" });
+                  }}
+                  className={clsx(
+                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-semibold transition",
+                    school === r.sub ? "bg-[#8ecae6]/20 text-[#bfe3f5]" : "text-[#f4ecdd]/70 hover:bg-white/10"
+                  )}
+                >
+                  <ArrowUpDown size={10} className="shrink-0 opacity-60" /> {r.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[9px] leading-snug text-[#f4ecdd]/40">
+              Kamu tetap bisa jalan kaki & masuk pintu secara manual. Menu ini hanya jalan pintas.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
 // ─── HUD utama ──────────────────────────────────────────────────────────────
 export function HUD() {
   const scene = useStore((s) => s.scene);
@@ -267,10 +372,10 @@ export function HUD() {
         </div>
         {(scene !== "hub" || school) && (
           <button
-            onClick={() => (school ? goScene("ppl") : goScene("hub"))}
+            onClick={() => (school?.startsWith("uksw:") ? goScene("uksw") : school ? goScene("ppl") : goScene("hub"))}
             className="pointer-events-auto flex w-fit items-center gap-2 rounded-2xl border border-[#f2cc8f]/30 bg-[#f2cc8f]/10 px-4 py-2 text-[11px] font-bold text-[#f2cc8f] backdrop-blur-md transition hover:bg-[#f2cc8f]/25"
           >
-            <Home size={13} /> {school ? "Ke Persimpangan" : "Ke Hub Utama"}
+            <Home size={13} /> {school?.startsWith("uksw:") ? "Keluar Gedung" : school ? "Ke Persimpangan" : "Ke Hub Utama"}
           </button>
         )}
       </div>

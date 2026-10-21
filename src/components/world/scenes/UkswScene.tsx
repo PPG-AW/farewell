@@ -10,29 +10,69 @@ import {
 } from "../primitives";
 import {
   Motorbike, Bike, FoodStall, Canopy, BasketCourt, VolleyNet, FlowerBed, Bush, Hedge, Fence,
-  PicnicTable, TrashBin, Banner, BuntingLine, ClassDesks, Whiteboard, Steps, PathLight,
-  Planter, Pond, Statue, scatterSpots, hash01, M,
+  PicnicTable, TrashBin, Banner, BuntingLine, Steps, PathLight,
+  Planter, Pond, Statue, Scoreboard, scatterSpots, hash01, M,
 } from "../props";
-import { WalkerNPC } from "../player";
-import { NARASI, randomAvatar, type UkswZoneId } from "@/lib/constants";
+import { WalkerNPC, useInteractable } from "../player";
+import { NARASI, randomAvatar } from "@/lib/constants";
 
-const ZONE_POS: Record<UkswZoneId, [number, number, number]> = {
-  parkir: [20, 0, 16],
-  lapangan: [-21, 0, 12],
-  e102: [-17, 0, -12],
-  e105: [-8, 0, -12],
-  e107: [1, 0, -12],
-  e108: [10, 0, -12],
-  aula: [22, 0, -10],
-  perpus: [-2, 0, -27],
-};
+/**
+ * DENAH KAMPUS (sesuai permintaan):
+ *   • Parkiran  : pojok KIRI-BAWAH   (x ≈ -30, z ≈ +28)
+ *   • Jalan     : dari parkir ke KIRI-ATAS menuju Gedung E
+ *   • Gedung E  : kiri-atas          (x ≈ -24, z ≈ -22)  → bisa DIMASUKI
+ *   • Lapangan  : luas di DEPAN gedung E (x ≈ -6, z ≈ 0)
+ *   • Perpus    : di seberang lapangan (x ≈ 22, z ≈ -14) → lift ke Lt.7
+ */
 
-// titik tersebar untuk mahasiswa yang nongkrong di kampus
+/** Pintu masuk gedung (luar) */
+function EntranceDoor({
+  id,
+  position,
+  ry = 0,
+  label,
+  plate,
+  onEnter,
+  color = "#7a512f",
+}: {
+  id: string;
+  position: [number, number, number];
+  ry?: number;
+  label: string;
+  plate: string;
+  onEnter: () => void;
+  color?: string;
+}) {
+  useInteractable(id, position, label, onEnter, "portal");
+  return (
+    <group position={position} rotation={[0, ry, 0]}>
+      <mesh position={[0, 1.4, 0]} onClick={(e) => { e.stopPropagation(); onEnter(); }}>
+        <boxGeometry args={[3.2, 2.8, 0.3]} />
+        {M("#8e7f68")}
+      </mesh>
+      <mesh position={[0, 1.3, 0.18]}>
+        <boxGeometry args={[2.7, 2.5, 0.1]} />
+        <meshStandardMaterial color={color} roughness={0.7} metalness={0.1} />
+      </mesh>
+      <mesh position={[0, 1.3, 0.25]}>
+        <boxGeometry args={[0.12, 2.4, 0.06]} />
+        {M("#e9c46a")}
+      </mesh>
+      <Html position={[0, 3.2, 0.2]} center distanceFactor={14} zIndexRange={[14, 0]}>
+        <div className="pointer-events-none select-none whitespace-nowrap rounded-lg border border-[#f2cc8f]/40 bg-[#2b2119]/90 px-3 py-1 text-[12px] font-black tracking-[0.2em] text-[#f2cc8f] shadow-xl">
+          {plate}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
 const SPOTS: [number, number, number][] = [
-  [-6, 0, 6], [5, 0, 7], [-13, 0, 3], [12, 0, 4], [-19, 0, 18], [17, 0, 20],
-  [-3, 0, 16], [7, 0, 14], [-22, 0, -2], [23, 0, 2], [-10, 0, -6], [9, 0, -5],
-  [0, 0, 21], [-16, 0, 8], [15, 0, 9], [2, 0, -20], [-8, 0, -22], [11, 0, -21],
-  [-26, 0, 6], [26, 0, -16], [-12, 0, 24], [13, 0, 25],
+  // tersebar luas & tersembunyi di balik properti
+  [-38, 0, 30], [-33, 0, 14], [-40, 0, -6], [-36, 0, -30], [-16, 0, -34],
+  [-4, 0, -36], [10, 0, -32], [26, 0, -30], [36, 0, -20], [40, 0, 2],
+  [34, 0, 18], [24, 0, 30], [8, 0, 33], [-8, 0, 30], [18, 0, 10],
+  [-20, 0, 22], [-28, 0, -16], [6, 0, -18], [30, 0, -4], [-12, 0, 14],
 ];
 
 export default function UkswScene() {
@@ -42,413 +82,383 @@ export default function UkswScene() {
   const setNarasi = useStore((s) => s.setNarasi);
   const goScene = useStore((s) => s.goScene);
 
-  const dosenUcapan = useMemo(() => (world?.ucapan ?? []).filter((u) => u.penulis.peran === "dosen"), [world?.ucapan]);
-  const dosenAvatars = useMemo(() => {
-    const users = world?.users ?? [];
-    return dosenUcapan.map((uc) => ({ uc, user: users.find((u) => u.id === uc.penulis.id) })).filter((x) => x.user?.avatar);
-  }, [dosenUcapan, world?.users]);
+  const masuk = (sub: string, label: string) => goScene("uksw", { school: sub, label, warna: "#8ecae6" });
 
-  // mahasiswa yang "mampir" ke kampus → tersebar acak
-  const mahasiswaKampus = useMemo(() => {
-    const list = (world?.users ?? []).filter((u) => u.peran !== "dosen" && u.avatar && hash01(u.id, 5) > 0.5).slice(0, 14);
+  // hanya sebagian orang di luar — sisanya tersembunyi di dalam gedung
+  const diLuar = useMemo(() => {
+    const list = (world?.users ?? []).filter((u) => u.avatar && hash01(u.id, 61) > 0.55).slice(0, 12);
     return scatterSpots(list, SPOTS);
   }, [world?.users]);
 
   const walkers = useMemo(
     () => [
-      { cfg: randomAvatar("P"), path: [[16, 14], [6, 10], [-4, 8], [-14, 6]] as [number, number][], speed: 1.3, off: 0 },
-      { cfg: randomAvatar("P"), path: [[-14, -8], [-4, -8], [6, -8], [14, -8]] as [number, number][], speed: 1.5, off: 5 },
-      { cfg: randomAvatar("L"), path: [[0, 22], [0, 6], [0, -8]] as [number, number][], speed: 1.7, off: 9 },
-      { cfg: randomAvatar("P"), path: [[-20, 20], [-8, 20], [-8, 12], [-20, 12]] as [number, number][], speed: 1.1, off: 14 },
-      { cfg: randomAvatar("P"), path: [[22, -4], [22, 8], [12, 8], [12, -4]] as [number, number][], speed: 1.2, off: 3 },
-      { cfg: randomAvatar("L"), path: [[-24, -14], [-12, -16], [4, -16], [16, -14]] as [number, number][], speed: 1.6, off: 17 },
+      { cfg: randomAvatar("P"), path: [[-28, 26], [-26, 10], [-24, -6], [-22, -16]] as [number, number][], speed: 1.5, off: 0 },
+      { cfg: randomAvatar("P"), path: [[-18, -18], [-6, -14], [8, -12], [18, -14]] as [number, number][], speed: 1.4, off: 5 },
+      { cfg: randomAvatar("L"), path: [[-30, 30], [-10, 28], [10, 26], [28, 24]] as [number, number][], speed: 1.8, off: 9 },
+      { cfg: randomAvatar("P"), path: [[16, 6], [4, 4], [-8, 6], [-16, 10]] as [number, number][], speed: 1.2, off: 14 },
+      { cfg: randomAvatar("L"), path: [[22, -8], [22, 6], [12, 14], [2, 12]] as [number, number][], speed: 1.6, off: 3 },
+      { cfg: randomAvatar("P"), path: [[-34, 20], [-34, 6], [-30, -4]] as [number, number][], speed: 1.1, off: 17 },
     ],
     []
   );
 
   return (
     <group>
-      <Ground size={150} color="#769a5b" />
-      <ZoneChip position={[0, 11, -4]} title="KAMPUS UKSW" sub="Rumah Kedua Kita · jelajahi tiap sudut" color="#8ecae6" />
+      <Ground size={170} color="#769a5b" />
+      <ZoneChip position={[-10, 13, -12]} title="KAMPUS UKSW" sub="Parkir → Gedung E → Lapangan → Perpustakaan" color="#8ecae6" />
 
-      {/* ══ jalan utama & trotoar ══ */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 6]}>
-        <planeGeometry args={[6, 40]} />
+      {/* ══════════ JALAN KAMPUS ══════════ */}
+      {/* jalan dari gerbang/parkir (kiri-bawah) naik ke atas */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-26, 0.015, 4]}>
+        <planeGeometry args={[7, 52]} />
         <meshStandardMaterial color="#86807a" roughness={1} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, -8]}>
-        <planeGeometry args={[46, 6]} />
+      {/* jalan melintang di depan gedung E menuju perpustakaan */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, -14]}>
+        <planeGeometry args={[60, 7]} />
         <meshStandardMaterial color="#86807a" roughness={1} />
       </mesh>
-      {Array.from({ length: 10 }).map((_, i) => (
-        <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 24 - i * 4]}>
-          <planeGeometry args={[0.3, 1.6]} />
+      {/* jalan tepi lapangan menuju perpus */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[21, 0.015, 2]}>
+        <planeGeometry args={[7, 36]} />
+        <meshStandardMaterial color="#86807a" roughness={1} />
+      </mesh>
+      {Array.from({ length: 12 }).map((_, i) => (
+        <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[-26, 0.025, 26 - i * 4]}>
+          <planeGeometry args={[0.3, 1.8]} />
+          <meshStandardMaterial color="#efe8d8" />
+        </mesh>
+      ))}
+      {Array.from({ length: 13 }).map((_, i) => (
+        <mesh key={`h${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[-26 + i * 4.4, 0.025, -14]}>
+          <planeGeometry args={[1.8, 0.3]} />
           <meshStandardMaterial color="#efe8d8" />
         </mesh>
       ))}
 
-      {/* ══ 1. GERBANG & PARKIR ══ */}
-      <GateArch position={[20, 0, 24]} width={8} height={3.6} color="#efe6c8" label="UNIVERSITAS KRISTEN SATYA WACANA" sub="Salatiga" />
-      <Fence from={[26, 24]} to={[34, 24]} />
-      <Fence from={[14, 24]} to={[8, 24]} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[20, 0.018, 15]}>
-        <planeGeometry args={[14, 11]} />
-        <meshStandardMaterial color="#5b5651" roughness={1} />
-      </mesh>
-      <Canopy position={[20, 0, 15]} size={[12, 8]} color="#3d6fb4" />
-      {Array.from({ length: 10 }).map((_, i) => (
-        <Motorbike
-          key={i}
-          position={[15.2 + (i % 5) * 2.4, 0, 12.4 + Math.floor(i / 5) * 4]}
-          ry={Math.PI / 2}
-          warna={["#c75146", "#3d6fb4", "#f2a93b", "#4f772d", "#8a6fb0"][i % 5]}
-        />
-      ))}
-      {[0, 1, 2, 3].map((i) => (
-        <Bike key={i} position={[26.5, 0, 11 + i * 1.5]} ry={Math.PI / 2} c={["#e07a5f", "#81b29a", "#8ecae6", "#f2cc8f"][i]} />
-      ))}
-      {/* pos satpam */}
-      <group position={[25, 0, 22]}>
+      {/* ══════════ 1. PARKIRAN — POJOK KIRI BAWAH ══════════ */}
+      <group position={[-32, 0, 28]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.018, 0]}>
+          <planeGeometry args={[18, 16]} />
+          <meshStandardMaterial color="#5b5651" roughness={1} />
+        </mesh>
+        {/* garis parkir */}
+        {Array.from({ length: 7 }).map((_, i) => (
+          <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[-7.5 + i * 2.5, 0.028, -3]}>
+            <planeGeometry args={[0.14, 5]} />
+            <meshStandardMaterial color="#e8e2d0" />
+          </mesh>
+        ))}
+        <Canopy position={[0, 0, -3]} size={[17, 6]} color="#3d6fb4" />
+        {Array.from({ length: 12 }).map((_, i) => (
+          <Motorbike
+            key={i}
+            position={[-6.4 + (i % 6) * 2.5, 0, i < 6 ? -4.4 : -1.4]}
+            ry={0}
+            warna={["#c75146", "#3d6fb4", "#f2a93b", "#4f772d", "#8a6fb0", "#2a9d8f"][i % 6]}
+          />
+        ))}
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Bike key={i} position={[-7 + i * 1.5, 0, 4.2]} ry={0} c={["#e07a5f", "#81b29a", "#8ecae6", "#f2cc8f", "#cdb4f5"][i]} />
+        ))}
+        <Html position={[0, 4.2, -3]} center distanceFactor={18} zIndexRange={[8, 0]}>
+          <div className="pointer-events-none select-none rounded-lg bg-[#2b2119]/85 px-3 py-1 text-[11px] font-black tracking-[0.3em] text-[#f2cc8f]">
+            PARKIRAN KAMPUS
+          </div>
+        </Html>
+      </group>
+      {/* gerbang di bawah parkiran */}
+      <GateArch position={[-26, 0, 34]} width={8} height={3.8} color="#efe6c8" label="UNIVERSITAS KRISTEN SATYA WACANA" sub="Salatiga" />
+      <Fence from={[-44, 34]} to={[-32, 34]} />
+      <Fence from={[-20, 34]} to={[10, 34]} />
+      <Fence from={[-44, 34]} to={[-44, -40]} />
+      <group position={[-20, 0, 31]}>
         <mesh position={[0, 1.2, 0]}>
-          <boxGeometry args={[2.4, 2.4, 2.2]} />
+          <boxGeometry args={[2.6, 2.4, 2.4]} />
           {M("#f4f1de")}
         </mesh>
-        <mesh position={[0, 2.55, 0]} rotation={[0, Math.PI / 4, 0]}>
-          <coneGeometry args={[2, 0.7, 4]} />
+        <mesh position={[0, 2.6, 0]} rotation={[0, Math.PI / 4, 0]}>
+          <coneGeometry args={[2.2, 0.8, 4]} />
           {M("#a3522f")}
         </mesh>
-        <mesh position={[0, 1.4, 1.12]}>
-          <planeGeometry args={[1.5, 1]} />
-          <meshStandardMaterial color="#9fd0e8" emissive="#cfe9f7" emissiveIntensity={0.25} />
+        <mesh position={[0, 1.4, 1.22]}>
+          <planeGeometry args={[1.6, 1]} />
+          <meshStandardMaterial color="#9fd0e8" emissive="#cfe9f7" emissiveIntensity={0.3} />
         </mesh>
       </group>
-      <Avatar3D config={useMemo(() => randomAvatar("L"), [])} position={[23.4, 0, 21]} rotationY={-1.2} phase={2} />
-      <FoodStall position={[29, 0, 14]} ry={-0.5} label="Kantin Gerbang" color="#e9a84a" />
-      <PicnicTable position={[29, 0, 18]} ry={0.3} />
-      <GlowMarker id="u-parkir" position={[24, 1.6, 17]} color="#8ecae6" label="Cerita Parkir" isLetter={false} onClick={() => setNarasi({ title: "Parkir & Gerbang", text: NARASI.parkir })} />
+      <Avatar3D config={useMemo(() => randomAvatar("L"), [])} position={[-21.6, 0, 29.4]} rotationY={-1} phase={2} />
+      <GlowMarker id="u-parkir" position={[-24, 1.6, 26]} color="#8ecae6" label="Cerita Parkir" isLetter={false} onClick={() => setNarasi({ title: "Parkir & Gerbang", text: NARASI.parkir })} />
+      <FoodStall position={[-40, 0, 24]} ry={1.1} label="Warung Pojok" color="#e9a84a" />
+      <PicnicTable position={[-40, 0, 19]} ry={0.3} />
+      <PicnicTable position={[-40, 0, 15]} ry={-0.2} />
 
-      {/* ══ 2. LAPANGAN OLAHRAGA ══ */}
-      <group position={[-21, 0, 14]}>
+      {/* ══════════ 2. GEDUNG E — KIRI ATAS (bisa dimasuki) ══════════ */}
+      <group position={[-24, 0, -24]}>
+        <Building position={[0, 0, 0]} size={[30, 9.5, 11]} color="#f2e9cd" roof="#a3522f" floors={2} />
+        {/* teras bertiang */}
+        <mesh position={[0, 0.14, 7]}>
+          <boxGeometry args={[30, 0.28, 4]} />
+          {M("#d9d0b8")}
+        </mesh>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <mesh key={i} position={[-13 + i * 3.7, 1.9, 8.6]}>
+            <cylinderGeometry args={[0.2, 0.22, 3.8, 7]} />
+            {M("#efe6c8")}
+          </mesh>
+        ))}
+        <mesh position={[0, 3.95, 8.6]}>
+          <boxGeometry args={[30, 0.4, 0.8]} />
+          {M("#d9cfae")}
+        </mesh>
+        <Steps position={[0, 0, 9.6]} w={9} />
+        <BuntingLine from={[-13, 9.2]} to={[13, 9.2]} h={4.3} />
+        {/* jendela lantai 2 */}
+        {Array.from({ length: 8 }).map((_, i) => (
+          <mesh key={`w${i}`} position={[-12.5 + i * 3.6, 6.6, 5.56]}>
+            <planeGeometry args={[1.8, 1.6]} />
+            <meshStandardMaterial color="#9fd0e8" emissive="#dff1ff" emissiveIntensity={0.3} />
+          </mesh>
+        ))}
+        <Html position={[0, 10.4, 4]} center distanceFactor={20} zIndexRange={[10, 0]}>
+          <div className="pointer-events-none select-none rounded-xl border border-[#f2cc8f]/35 bg-[#7a4a2a]/90 px-4 py-1.5 text-[13px] font-black tracking-[0.3em] text-[#ffe9b0] shadow-2xl">
+            GEDUNG E
+          </div>
+        </Html>
+        {/* PINTU MASUK */}
+        <EntranceDoor
+          id="masuk-gedung-e"
+          position={[0, 0, 5.8]}
+          label="Masuk Gedung E (E102–E108 & Aula)"
+          plate="MASUK ▸ GEDUNG E"
+          onEnter={() => masuk("uksw:e-lorong", "Lorong Gedung E")}
+        />
+      </group>
+      <Banner position={[-14, 0, -14.5]} ry={-0.5} title="PPG PRAJABATAN 2026" sub="Prodi Matematika" color="#2f4b7a" />
+      <Hedge from={[-39, -14.5]} to={[-30, -14.5]} />
+      {[[-38, -18], [-10, -18]].map(([x, z], i) => (
+        <Planter key={i} position={[x, 0, z]} c={i ? "#c25b4a" : "#4a7a8c"} />
+      ))}
+
+      {/* ══════════ 3. LAPANGAN LUAS DI DEPAN GEDUNG E ══════════ */}
+      <group position={[-4, 0, 0]}>
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-          <planeGeometry args={[24, 16]} />
+          <planeGeometry args={[34, 22]} />
           <meshStandardMaterial color="#6faf55" roughness={1} />
         </mesh>
+        {/* garis lapangan */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
-          <ringGeometry args={[2.3, 2.45, 24]} />
+          <ringGeometry args={[3, 3.2, 28]} />
           <meshStandardMaterial color="#f4f1de" />
         </mesh>
-        {[-11.2, 11.2].map((x) => (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
+          <planeGeometry args={[0.2, 22]} />
+          <meshStandardMaterial color="#f4f1de" />
+        </mesh>
+        {[-1, 1].map((s) => (
+          <mesh key={s} rotation={[-Math.PI / 2, 0, 0]} position={[s * 16.9, 0.03, 0]}>
+            <planeGeometry args={[0.2, 22]} />
+            <meshStandardMaterial color="#f4f1de" />
+          </mesh>
+        ))}
+        {/* gawang */}
+        {[-16, 16].map((x) => (
           <group key={x} position={[x, 0, 0]}>
-            {[-1.6, 1.6].map((z) => (
-              <mesh key={z} position={[0, 0.8, z]}>
-                <cylinderGeometry args={[0.05, 0.05, 1.6, 5]} />
+            {[-2.2, 2.2].map((z) => (
+              <mesh key={z} position={[0, 1.1, z]}>
+                <cylinderGeometry args={[0.07, 0.07, 2.2, 6]} />
                 {M("#f4f1de")}
               </mesh>
             ))}
-            <mesh position={[0, 1.6, 0]} rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[0.05, 0.05, 3.25, 5]} />
+            <mesh position={[0, 2.2, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.07, 0.07, 4.45, 6]} />
               {M("#f4f1de")}
             </mesh>
           </group>
         ))}
-        <mesh position={[2, 0.16, 3]}>
-          <icosahedronGeometry args={[0.18, 1]} />
+        <mesh position={[3, 0.18, 4]}>
+          <icosahedronGeometry args={[0.2, 1]} />
           {M("#f4f1de", 0.5)}
         </mesh>
-        {/* tribun bertingkat */}
+        {/* tribun menghadap lapangan */}
         {[0, 1, 2, 3].map((i) => (
-          <mesh key={i} position={[0, 0.3 + i * 0.55, -9.5 - i * 0.8]}>
-            <boxGeometry args={[16, 0.55, 0.8]} />
+          <mesh key={i} position={[0, 0.32 + i * 0.6, 12.6 + i * 0.9]}>
+            <boxGeometry args={[22, 0.6, 0.9]} />
             {M(i % 2 ? "#c7c2b4" : "#a79c86")}
           </mesh>
         ))}
-        {/* penonton duduk di tribun */}
-        {Array.from({ length: 7 }).map((_, i) => (
+        {Array.from({ length: 9 }).map((_, i) => (
           <Avatar3D
             key={i}
             config={randomAvatar(i % 3 === 0 ? "L" : "P")}
-            position={[-6 + i * 2.1, 0.85 + (i % 3) * 0.55, -9.9 - (i % 3) * 0.8]}
-            rotationY={0}
-            phase={i * 2.3}
+            position={[-8 + i * 2.1, 0.9 + (i % 3) * 0.6, 13 + (i % 3) * 0.9]}
+            rotationY={Math.PI}
+            phase={i * 2.1}
           />
         ))}
       </group>
-      <BasketCourt position={[-24, 0, -4]} />
-      <VolleyNet position={[-8, 0, 20]} ry={0.2} />
-      <FlagPole position={[-6, 0, 22]} h={6.5} />
-      <Scorebox />
-      <GlowMarker id="u-lapangan" position={[-14, 1.7, 15]} color="#8ecae6" label="Cerita Lapangan" isLetter={false} onClick={() => setNarasi({ title: "Lapangan Bola", text: NARASI.lapangan })} />
+      <Scoreboard position={[-22, 0, 8]} ry={1.2} text="PPG 29 — 0 LELAH" sub="Pertandingan persahabatan" />
+      <FlagPole position={[-20, 0, -8]} h={7} />
+      <GlowMarker id="u-lapangan" position={[-6, 1.7, -11]} color="#8ecae6" label="Cerita Lapangan" isLetter={false} onClick={() => setNarasi({ title: "Lapangan Bola", text: NARASI.lapangan })} />
 
-      {/* ══ 3. GEDUNG KELAS E102–E108 (terbuka, terlihat isinya) ══ */}
-      <group position={[-3.5, 0, -16]}>
-        <Building position={[0, 0, -2]} size={[34, 8, 7]} color="#f2e9cd" roof="#a3522f" floors={2} />
-        <Steps position={[0, 0, 2.4]} w={8} />
-        {/* teras panjang + tiang */}
-        <mesh position={[0, 0.12, 3.6]}>
-          <boxGeometry args={[34, 0.25, 4]} />
-          {M("#d9d0b8")}
-        </mesh>
-        {Array.from({ length: 9 }).map((_, i) => (
-          <mesh key={i} position={[-15 + i * 3.8, 1.7, 5.3]}>
-            <cylinderGeometry args={[0.18, 0.2, 3.4, 7]} />
-            {M("#efe6c8")}
-          </mesh>
-        ))}
-        <mesh position={[0, 3.5, 5.3]}>
-          <boxGeometry args={[34, 0.35, 0.7]} />
-          {M("#d9cfae")}
-        </mesh>
-        <BuntingLine from={[-15, 5.6]} to={[15, 5.6]} h={3.9} />
-      </group>
-      {/* pintu + papan nama tiap ruang + isi kelas */}
-      {([
-        ["e102", "E102", -17],
-        ["e105", "E105", -8],
-        ["e107", "E107", 1],
-        ["e108", "E108", 10],
-      ] as [UkswZoneId, string, number][]).map(([zid, lbl, x]) => (
-        <group key={zid}>
-          <mesh position={[x, 1.15, -14.3]}>
-            <planeGeometry args={[1.4, 2.3]} />
-            <meshStandardMaterial color="#6b4a2f" />
-          </mesh>
-          <Html position={[x, 2.75, -14.25]} center distanceFactor={13} zIndexRange={[12, 0]}>
-            <div className="pointer-events-none select-none rounded-md border border-[#f2cc8f]/30 bg-[#2b2119]/90 px-2 py-0.5 text-[11px] font-bold tracking-[0.2em] text-[#f2cc8f] shadow-lg">
-              {lbl}
-            </div>
-          </Html>
-          <GlowMarker
-            id={`u-${zid}`}
-            position={[x, 1.5, -12.6]}
-            color="#8ecae6"
-            label={`Kenangan ${lbl}`}
-            isLetter={false}
-            onClick={() => setNarasi({ title: `Ruang ${lbl}`, text: NARASI[zid] })}
-          />
-        </group>
-      ))}
-      {/* interior terlihat: meja + papan tulis di sisi teras */}
-      <ClassDesks position={[-17, 0, -20]} rows={2} cols={3} />
-      <Whiteboard position={[-17, 0, -23]} lines={["∫ x² dx = x³/3 + C", "lim (1+1/x)ˣ = e"]} hijau />
-      <ClassDesks position={[-8, 0, -20]} rows={2} cols={3} />
-      <Whiteboard position={[-8, 0, -23]} lines={["Diskusi Kelompok", "Modul 3 · Asesmen"]} />
-      <ClassDesks position={[1, 0, -20]} rows={2} cols={3} />
-      <Whiteboard position={[1, 0, -23]} lines={["Microteaching", "Hari ini: Trigonometri"]} hijau />
-      <Whiteboard position={[10, 0, -23]} lines={["E108", "— ruang yang kini sunyi —"]} />
-      {/* kursi tunggal E108 */}
-      <group position={[10, 0, -20]}>
-        <mesh position={[0, 0.45, 0]}>
-          <boxGeometry args={[0.6, 0.08, 0.55]} />
-          {M("#9a6b3f")}
-        </mesh>
-        <mesh position={[0, 0.78, -0.26]}>
-          <boxGeometry args={[0.6, 0.6, 0.08]} />
-          {M("#9a6b3f")}
-        </mesh>
-      </group>
-
-      {/* ══ 4. AULA SEMINAR ══ */}
-      <group position={[24, 0, -14]}>
-        <Building position={[0, 0, 0]} size={[12, 9, 9]} color="#ead9b4" roof="#8a3b2a" floors={2} />
-        <Steps position={[0, 0, 5]} w={6} />
-        {/* tangga spiral luar */}
-        <group position={[-7.6, 0, 3]}>
-          <mesh position={[0, 2.2, 0]}>
-            <cylinderGeometry args={[0.11, 0.11, 4.4, 6]} />
-            {M("#5c4033")}
-          </mesh>
-          {Array.from({ length: 14 }).map((_, i) => {
-            const a = i * 0.48;
-            return (
-              <mesh key={i} position={[Math.cos(a) * 0.85, 0.3 + i * 0.3, Math.sin(a) * 0.85]} rotation={[0, -a, 0]}>
-                <boxGeometry args={[1.05, 0.1, 0.46]} />
-                {M("#b6ab90")}
-              </mesh>
-            );
-          })}
-        </group>
-        <Html position={[0, 6.2, 4.6]} center distanceFactor={15} zIndexRange={[10, 0]}>
-          <div className="pointer-events-none w-[300px] select-none rounded-lg border border-[#f2cc8f]/40 bg-[#7a1f2b]/95 px-3 py-2 text-center shadow-2xl">
-            <div className="text-[11px] font-bold tracking-widest text-[#ffe9b0]">SEMINAR PROPOSAL PROYEK KEPEMIMPINAN</div>
-            <div className="text-[9px] tracking-[0.2em] text-[#f4ecdd]/85">PPG Prajabatan 2026 · Prodi Matematika UKSW</div>
-          </div>
-        </Html>
-        {["#f2cc8f", "#e5989b", "#8ecae6", "#81b29a"].map((c, i) => (
-          <group key={c} position={[-4.5 + i * 3, 0, 6.5]}>
-            <mesh position={[0, 0.8, 0]}>
-              <cylinderGeometry args={[0.04, 0.04, 1.6, 4]} />
-              {M("#57504a")}
-            </mesh>
-            <mesh position={[0, 1.75, 0]}>
-              <planeGeometry args={[1, 1.35]} />
-              <meshStandardMaterial color={c} roughness={0.9} />
-            </mesh>
-          </group>
-        ))}
-      </group>
-      <GlowMarker id="u-aula" position={[18, 1.8, -8]} color="#8ecae6" label="Cerita Aula" isLetter={false} onClick={() => setNarasi({ title: "Aula Seminar Lt.2", text: NARASI.aula })} />
-
-      {/* ══ 5. PERPUSTAKAAN LT.7 ══ */}
-      <group position={[-2, 0, -30]}>
-        <mesh position={[0, 6.5, 0]}>
-          <boxGeometry args={[9, 13, 7]} />
+      {/* ══════════ 4. PERPUSTAKAAN — SEBERANG LAPANGAN (lift ke Lt.7) ══════════ */}
+      <group position={[24, 0, -16]}>
+        <mesh position={[0, 8, 0]}>
+          <boxGeometry args={[14, 16, 11]} />
           {M("#bcd4e6")}
         </mesh>
-        {Array.from({ length: 6 }).map((_, fl) =>
-          [-3, -1.5, 0, 1.5, 3].map((cx) => (
-            <mesh key={`${fl}${cx}`} position={[cx * 1.3, 1.8 + fl * 2, 3.54]}>
-              <planeGeometry args={[1, 1.4]} />
-              <meshStandardMaterial color="#5f8ac7" emissive="#8ecae6" emissiveIntensity={0.4} />
+        {/* jendela 7 lantai */}
+        {Array.from({ length: 7 }).map((_, fl) =>
+          [-4.2, -1.4, 1.4, 4.2].map((cx) => (
+            <mesh key={`${fl}${cx}`} position={[cx, 2.4 + fl * 2.1, 5.56]}>
+              <planeGeometry args={[1.9, 1.3]} />
+              <meshStandardMaterial
+                color={fl === 6 ? "#cfe9f7" : "#5f8ac7"}
+                emissive={fl === 6 ? "#ffffff" : "#8ecae6"}
+                emissiveIntensity={fl === 6 ? 0.75 : 0.35}
+              />
             </mesh>
           ))
         )}
-        <mesh position={[0, 13.4, 0]} rotation={[0, Math.PI / 4, 0]}>
-          <coneGeometry args={[6, 2, 4]} />
+        <mesh position={[0, 16.6, 0]} rotation={[0, Math.PI / 4, 0]}>
+          <coneGeometry args={[9, 2.4, 4]} />
           {M("#3d5a80")}
         </mesh>
-        <Html position={[0, 15.2, 0]} center distanceFactor={17} zIndexRange={[10, 0]}>
-          <div className="pointer-events-none select-none rounded-xl border border-white/25 bg-[#3d5a80]/90 px-3 py-1 text-[11px] font-bold tracking-widest text-[#e3f0ff] shadow-xl">
-            PERPUS LT.7 · KELAS BIRU-PUTIH
+        <Html position={[0, 18.8, 0]} center distanceFactor={24} zIndexRange={[10, 0]}>
+          <div className="pointer-events-none select-none rounded-xl border border-white/25 bg-[#3d5a80]/90 px-4 py-1.5 text-[12px] font-black tracking-[0.25em] text-[#e3f0ff] shadow-2xl">
+            PERPUSTAKAAN · 7 LANTAI
           </div>
         </Html>
-        <Steps position={[0, 0, 4]} w={5} />
-        {/* lift kaca */}
-        <group position={[5.3, 0, 2]}>
-          <mesh position={[0, 2, 0]}>
-            <boxGeometry args={[1.9, 4, 1.9]} />
-            <meshStandardMaterial color="#8fa3b8" metalness={0.45} roughness={0.35} transparent opacity={0.75} />
+        {/* teras & pintu masuk */}
+        <mesh position={[0, 0.14, 7]}>
+          <boxGeometry args={[14, 0.28, 4]} />
+          {M("#cfd8e2")}
+        </mesh>
+        <Steps position={[0, 0, 9.4]} w={7} />
+        {[-5, 5].map((x) => (
+          <mesh key={x} position={[x, 2, 8.4]}>
+            <cylinderGeometry args={[0.24, 0.26, 4, 8]} />
+            {M("#dce7f0")}
           </mesh>
-          <mesh position={[0, 1.3, 0.98]}>
-            <planeGeometry args={[1.5, 2.4]} />
-            <meshStandardMaterial color="#cfe4f2" metalness={0.4} roughness={0.3} />
-          </mesh>
-        </group>
+        ))}
+        <EntranceDoor
+          id="masuk-perpus"
+          position={[0, 0, 5.8]}
+          label="Masuk Perpustakaan (ada lift ke Lt.7)"
+          plate="MASUK ▸ PERPUSTAKAAN"
+          color="#2f4b7a"
+          onEnter={() => masuk("uksw:perpus", "Perpustakaan Lantai 1")}
+        />
       </group>
-      <GlowMarker id="u-perpus" position={[2.5, 1.7, -25.5]} color="#8ecae6" label="Naik Lift ke Lt.7" isLetter={false} onClick={() => setNarasi({ title: "Lift Menuju Lantai 7", text: NARASI.perpus })} />
+      <Banner position={[16, 0, -7]} ry={0.6} title="LANTAI 7 ADA PANORAMA" sub="naik lift dari dalam" color="#2f4b7a" />
+      <Pond position={[32, 0, -2]} r={3.2} />
+      <Gazebo position={[34, 0, 8]} s={1.1} />
 
-      {/* ══ taman tengah & fasilitas ══ */}
-      <Pond position={[8, 0, 8]} r={3} />
-      <Gazebo position={[-10, 0, 6]} s={1.1} />
-      <Statue position={[0, 0, 14]} />
-      <FoodStall position={[-16, 0, -2]} ry={0.9} label="Kantin Mbak Sri" color="#81b29a" />
-      <FoodStall position={[12, 0, -2]} ry={-0.8} label="Es Teh & Gorengan" color="#c25b4a" />
-      {[[-13, -4], [-13, 0], [14, -5], [14, 1]].map(([x, z], i) => (
-        <PicnicTable key={i} position={[x, 0, z]} ry={i * 0.4} />
+      {/* ══════════ fasilitas penunjang (biar ramai) ══════════ */}
+      <BasketCourt position={[14, 0, 20]} />
+      <VolleyNet position={[-10, 0, 24]} ry={0.15} />
+      <FoodStall position={[4, 0, 12]} ry={-0.5} label="Kantin Mbak Sri" color="#81b29a" />
+      <FoodStall position={[10, 0, 12]} ry={-0.5} label="Es Teh & Gorengan" color="#c25b4a" />
+      {[[2, 16], [7, 16], [12, 16]].map(([x, z], i) => (
+        <PicnicTable key={i} position={[x, 0, z]} ry={i * 0.3} />
       ))}
-      <Banner position={[-4, 0, 20]} ry={0.4} title="PPG PRAJABATAN 2026" sub="Prodi Matematika" color="#2f4b7a" />
-      <Banner position={[5, 0, 20]} ry={-0.4} title="SELAMAT BERJUANG!" sub="29 calon guru" color="#7a1f2b" />
-      <Hedge from={[-6, 11]} to={[6, 11]} />
-      <Hedge from={[-6, 2]} to={[6, 2]} />
-      {[[-5, 5], [5, 5], [-5, 9], [5, 9]].map(([x, z], i) => (
-        <FlowerBed key={i} position={[x, 0, z]} s={0.85} />
+      <Statue position={[-26, 0, 18]} />
+      <Gazebo position={[-36, 0, 2]} s={1.15} />
+      <Fountain />
+      {[[-30, 10], [-30, -2], [12, -10], [30, 12], [-14, 28], [6, 28]].map(([x, z], i) => (
+        <FlowerBed key={i} position={[x, 0, z]} s={0.9} />
       ))}
-      {[[-19, 22], [19, 8], [-27, -8], [27, -22], [-20, -22]].map(([x, z], i) => (
-        <Planter key={i} position={[x, 0, z]} c={["#c25b4a", "#4a7a8c", "#7a6b4a", "#8a6fb0", "#4f772d"][i]} />
-      ))}
-      {[[-7, 13], [7, 13], [-7, 0], [7, 0], [-7, -6], [7, -6]].map(([x, z], i) => (
+      {[[-22, 20], [-22, 2], [-22, -10], [-12, -16], [4, -16], [16, -16], [21, 8], [21, 18], [-26, 14], [-26, 0]].map(([x, z], i) => (
         <PathLight key={i} position={[x, 0, z]} />
       ))}
-      {[[-10, 18], [10, 18], [-16, -8], [16, -8], [0, 26]].map(([x, z], i) => (
+      {[[-30, 24], [-30, -12], [0, -18], [18, -18], [26, 14], [-16, 32]].map(([x, z], i) => (
         <LampPost key={i} position={[x, 0, z]} />
       ))}
-      {[[-4, 12], [4, 12], [-12, 2], [12, 2]].map(([x, z], i) => (
+      {[[-23, 24], [-23, 6], [-23, -12], [18, 14], [8, -16]].map(([x, z], i) => (
+        <Bench key={i} position={[x, 0, z]} ry={i % 2 ? 1.6 : -1.6} />
+      ))}
+      {[[-28, 20], [-28, -8], [2, -17], [20, 4], [12, 18]].map(([x, z], i) => (
         <TrashBin key={i} position={[x, 0, z]} />
       ))}
-      {[[-9, 16, 0.3], [9, 16, -0.3], [-18, 5, 1], [18, 6, -1], [-22, -12, 1.5], [22, -20, -1.5]].map(([x, z, ry], i) => (
-        <Bench key={i} position={[x, 0, z]} ry={ry} />
-      ))}
-
-      {/* pepohonan & semak lebat */}
-      {Array.from({ length: 26 }).map((_, i) => {
-        const a = (i / 26) * Math.PI * 2;
-        const r = 30 + hash01(`ur${i}`) * 12;
-        return <Tree key={i} position={[Math.cos(a) * r, 0, Math.sin(a) * r - 4]} s={1 + hash01(`us${i}`) * 0.8} tone={i % 3 ? "#4f772d" : "#3f6b35"} />;
+      {Array.from({ length: 30 }).map((_, i) => {
+        const a = (i / 30) * Math.PI * 2;
+        const r = 44 + hash01(`ur${i}`) * 14;
+        return <Tree key={i} position={[Math.cos(a) * r - 4, 0, Math.sin(a) * r - 4]} s={1.1 + hash01(`us${i}`) * 0.9} tone={i % 3 ? "#4f772d" : "#3f6b35"} />;
       })}
-      {Array.from({ length: 12 }).map((_, i) => (
-        <Tree key={`t2${i}`} position={[(hash01(`ux${i}`) - 0.5) * 46, 0, (hash01(`uz${i}`) - 0.5) * 40 + 4]} s={0.9 + hash01(`uy${i}`) * 0.7} tone="#5a8a3f" />
+      {Array.from({ length: 16 }).map((_, i) => (
+        <Tree key={`t2${i}`} position={[(hash01(`ux${i}`) - 0.5) * 70 - 4, 0, (hash01(`uz${i}`) - 0.5) * 66 - 4]} s={0.9 + hash01(`uy${i}`) * 0.8} tone="#5a8a3f" />
       ))}
-      {Array.from({ length: 24 }).map((_, i) => (
-        <Bush key={i} position={[(hash01(`ubx${i}`) - 0.5) * 52, 0, (hash01(`ubz${i}`) - 0.5) * 50]} s={0.8 + hash01(`ubs${i}`) * 0.5} />
+      {Array.from({ length: 34 }).map((_, i) => (
+        <Bush key={i} position={[(hash01(`ubx${i}`) - 0.5) * 78, 0, (hash01(`ubz${i}`) - 0.5) * 74]} s={0.8 + hash01(`ubs${i}`) * 0.6} />
       ))}
 
-      {/* ══ dosen NPC + suratnya ══ */}
-      {dosenAvatars.map(({ uc, user }) => {
-        const zp = ZONE_POS[uc.zona as UkswZoneId] ?? [0, 0, 0];
-        return (
-          <group key={uc.id}>
-            <Avatar3D
-              config={user!.avatar!}
-              position={[zp[0] + 1.6, 0, zp[2] + 2.4]}
-              rotationY={Math.PI * 0.9}
-              nameTag={user!.panggilan}
-              role="dosen"
-              isSelf={uc.penulis.id === session?.id}
-              phase={hash01(uc.id) * 8}
-              onClick={() => openUcapan(uc.id)}
-            />
-            <GlowMarker
-              id={`uc-${uc.id}`}
-              position={[zp[0] + 0.2, 1.6, zp[2] + 2.8]}
-              color="#f2cc8f"
-              label={`Surat ${user!.panggilan}`}
-              onClick={() => openUcapan(uc.id)}
-            />
-          </group>
-        );
-      })}
-
-      {/* ══ mahasiswa tersebar ══ */}
-      {mahasiswaKampus.map(({ item, pos, ry }) => {
+      {/* ══════════ orang-orang ══════════ */}
+      {diLuar.map(({ item, pos, ry }) => {
         const uc = world?.ucapan.find((x) => x.penulis.id === item.id);
         return (
-          <Avatar3D
-            key={item.id}
-            config={item.avatar!}
-            position={pos}
-            rotationY={ry}
-            nameTag={item.panggilan}
-            role={item.peran}
-            isSelf={item.id === session?.id}
-            phase={hash01(item.id) * 9}
-            onClick={uc ? () => openUcapan(uc.id) : undefined}
-          />
+          <OutdoorPerson key={item.id} item={item} pos={pos} ry={ry} ucId={uc?.id} isSelf={item.id === session?.id} onOpen={openUcapan} />
         );
       })}
       {walkers.map((w, i) => (
         <WalkerNPC key={i} config={w.cfg} path={w.path} speed={w.speed} offset={w.off} />
       ))}
 
-      <Mountain position={[-58, -2, -74]} s={1.7} color="#5b5e7c" snow smoke />
-      <Mountain position={[52, -2, -80]} s={1.5} color="#45604e" />
-      <Cloud position={[-22, 15, -34]} s={1.9} />
-      <Cloud position={[20, 17, -26]} s={1.5} speed={0.07} />
-      <Cloud position={[0, 16, 30]} s={1.7} speed={0.04} />
-
-      <PortalRing position={[32, 0, 24]} color="#f2cc8f" label="HUB UTAMA" sub="Kembali" onClick={() => goScene("hub")} />
-      <Sparkles count={18} scale={18} size={1.3} speed={0.2} position={[0, 2.5, 0]} color="#fff2cc" />
+      <Mountain position={[-66, -2, -82]} s={1.8} color="#5b5e7c" snow smoke />
+      <Mountain position={[58, -2, -88]} s={1.6} color="#45604e" />
+      <Cloud position={[-26, 17, -40]} s={2} />
+      <Cloud position={[24, 19, -30]} s={1.6} speed={0.07} />
+      <Cloud position={[0, 18, 34]} s={1.8} speed={0.04} />
+      <PortalRing position={[-26, 0, 36]} color="#f2cc8f" label="HUB UTAMA" sub="Kembali" onClick={() => goScene("hub")} />
+      <Sparkles count={18} scale={20} size={1.3} speed={0.2} position={[-6, 2.5, 0]} color="#fff2cc" />
     </group>
   );
 }
 
-function Scorebox() {
+function Fountain() {
   return (
-    <group position={[-33, 0, 14]} rotation={[0, Math.PI / 2, 0]}>
-      {[-1.2, 1.2].map((x) => (
-        <mesh key={x} position={[x, 1.1, 0]}>
-          <cylinderGeometry args={[0.09, 0.11, 2.2, 5]} />
-          {M("#6b5a45")}
-        </mesh>
-      ))}
-      <mesh position={[0, 2.5, 0]}>
-        <boxGeometry args={[3, 1.4, 0.16]} />
-        {M("#2f3b44")}
+    <group position={[21, 0, -4]}>
+      <mesh position={[0, 0.25, 0]}>
+        <cylinderGeometry args={[2, 2.2, 0.5, 14]} />
+        {M("#b8b0a0")}
       </mesh>
-      <Html position={[0, 2.5, 0.1]} center distanceFactor={13} zIndexRange={[8, 0]}>
-        <div className="pointer-events-none select-none text-center">
-          <div className="text-[13px] font-black tracking-wider text-[#ffe9b0]">PPG 29 — 0 LELAH</div>
-          <div className="text-[8px] uppercase tracking-[0.2em] text-[#f4ecdd]/80">Pertandingan persahabatan</div>
-        </div>
-      </Html>
+      <mesh position={[0, 0.42, 0]}>
+        <cylinderGeometry args={[1.75, 1.75, 0.2, 14]} />
+        <meshStandardMaterial color="#5fa8c7" roughness={0.25} metalness={0.15} transparent opacity={0.85} />
+      </mesh>
+      <mesh position={[0, 0.9, 0]}>
+        <cylinderGeometry args={[0.28, 0.4, 1.2, 8]} />
+        {M("#cfc6b0")}
+      </mesh>
     </group>
+  );
+}
+
+function OutdoorPerson({
+  item,
+  pos,
+  ry,
+  ucId,
+  isSelf,
+  onOpen,
+}: {
+  item: { id: string; panggilan: string; peran: string; avatar: unknown };
+  pos: [number, number, number];
+  ry: number;
+  ucId?: string;
+  isSelf: boolean;
+  onOpen: (id: string) => void;
+}) {
+  useInteractable(`op-${item.id}`, [pos[0], pos[1] + 1, pos[2]], `Surat ${item.panggilan}`, () => ucId && onOpen(ucId), "orang", !!ucId);
+  return (
+    <Avatar3D
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config={item.avatar as any}
+      position={pos}
+      rotationY={ry}
+      nameTag={item.panggilan}
+      role={item.peran}
+      isSelf={isSelf}
+      phase={hash01(item.id) * 9}
+      onClick={ucId ? () => onOpen(ucId) : undefined}
+    />
   );
 }
