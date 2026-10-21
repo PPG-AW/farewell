@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft, ArrowRight, Check, ChevronLeft, GraduationCap, Heart, Flame, Laugh, CloudRain,
-  HandHeart, Sparkles, Shirt, Tent, Lock, Rocket, PartyPopper, TriangleAlert, Save,
+  HandHeart, Sparkles, Shirt, Tent, Lock, Rocket, PartyPopper, TriangleAlert, Save, Shuffle,
 } from "lucide-react";
 import { apiFetch, useStore } from "@/store/useStore";
 import {
@@ -16,6 +16,7 @@ import {
   randomAvatar, type AvatarConfig,
 } from "@/lib/constants";
 import clsx from "clsx";
+import { HairIcon, HijabIcon, TopIcon, BottomIcon, ShoeIcon, HatIcon, ItemIcon, FaceIcon, BodyIcon, GlassesIcon } from "@/components/avatar/OptionIcons";
 
 const AvatarPreview = dynamic(() => import("@/components/avatar/AvatarPreview"), { ssr: false });
 
@@ -26,31 +27,43 @@ function Swatch({ c, active, onClick }: { c: string; active: boolean; onClick: (
   return (
     <button
       onClick={onClick}
-      className={clsx("h-8 w-8 rounded-lg border transition", active ? "scale-110 border-[#f2cc8f] ring-2 ring-[#f2cc8f]/50" : "border-white/15 hover:scale-105")}
+      className={clsx(
+        "h-9 w-9 rounded-xl border-2 transition",
+        active ? "scale-110 border-[#f2cc8f] ring-2 ring-[#f2cc8f]/40" : "border-white/20 hover:scale-105"
+      )}
       style={{ background: c }}
       aria-label={`Warna ${c}`}
     />
   );
 }
 
-function Pill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+/** Tombol pilihan dengan GAMBAR preview + nama */
+function IconChoice({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       className={clsx(
-        "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold capitalize transition",
-        active ? "border-[#f2cc8f] bg-[#f2cc8f]/15 text-[#f2cc8f]" : "border-white/15 bg-white/5 text-[#f4ecdd]/75 hover:bg-white/10"
+        "flex w-[72px] flex-col items-center gap-1 rounded-xl border p-1.5 transition",
+        active
+          ? "border-[#f2cc8f] bg-[#f2cc8f]/15 shadow-[0_0_20px_-8px_rgba(242,204,143,0.8)]"
+          : "border-white/12 bg-white/5 hover:bg-white/10"
       )}
     >
-      {label.replace(/-/g, " ")}
+      <span className={clsx("flex h-11 w-11 items-center justify-center rounded-lg transition", active ? "bg-[#1b1611]/70" : "bg-black/25")}>{icon}</span>
+      <span className={clsx("w-full truncate text-center text-[9px] font-bold capitalize leading-tight", active ? "text-[#f2cc8f]" : "text-[#f4ecdd]/70")}>
+        {label.replace(/-/g, " ")}
+      </span>
     </button>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="mt-4">
-      <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.25em] text-[#f2cc8f]/80">{title}</div>
+    <div className="mt-4 border-t border-white/8 pt-3 first:mt-0 first:border-0 first:pt-0">
+      <div className="mb-2 flex items-baseline gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#f2cc8f]/85">{title}</span>
+        {hint && <span className="text-[9px] text-[#f4ecdd]/40">{hint}</span>}
+      </div>
       <div className="flex flex-wrap gap-1.5">{children}</div>
     </div>
   );
@@ -80,38 +93,79 @@ function Customizer({ config, setConfig, gender, mode, locked }: { config: Avata
   }
 
   return (
-    <div className="max-h-[46vh] overflow-y-auto pr-1 sm:max-h-none">
+    <div className="max-h-[48vh] overflow-y-auto pr-1 lg:max-h-[58vh]">
       <Section title="Warna Kulit">
         {KULIT_OPTIONS.map((c) => (
           <Swatch key={c} c={c} active={config.kulit === c} onClick={() => set({ kulit: c })} />
         ))}
       </Section>
+
       <Section title="Bentuk Tubuh">
         {TUBUH_OPTIONS.map((t) => (
-          <Pill key={t} label={TUBUH_LABEL[t]} active={config.tubuh === t} onClick={() => set({ tubuh: t })} />
+          <IconChoice key={t} icon={<BodyIcon model={t} />} label={TUBUH_LABEL[t]} active={config.tubuh === t} onClick={() => set({ tubuh: t })} />
         ))}
       </Section>
-      <Section title="Model Rambut">
-        {rambutList.map((r) => (
-          <Pill key={r} label={r} active={config.rambutModel === r && config.hijab === "none"} onClick={() => set({ rambutModel: r, hijab: "none" })} />
+
+      <Section title="Bentuk Wajah">
+        {WAJAH_OPTIONS.map((wj) => (
+          <IconChoice key={wj} icon={<FaceIcon model={wj} skin={config.kulit} />} label={wj} active={config.wajah === wj} onClick={() => set({ wajah: wj })} />
         ))}
+        <IconChoice icon={<GlassesIcon on={config.kacamata} />} label={config.kacamata ? "pakai kacamata" : "tanpa kacamata"} active={config.kacamata} onClick={() => set({ kacamata: !config.kacamata })} />
       </Section>
-      <Section title="Warna Rambut">
-        {RAMBUT_WARNA.map((c) => (
-          <Swatch key={c} c={c} active={config.rambutWarna === c} onClick={() => set({ rambutWarna: c })} />
-        ))}
-      </Section>
+
+      {gender === "P" && (
+        <Section title="Hijab" hint="pilih 'none' untuk tampil berambut">
+          {HIJAB_OPTIONS.map((h) => (
+            <IconChoice
+              key={h}
+              icon={<HijabIcon style={h} color={config.hijabWarna} skin={config.kulit} />}
+              label={h === "none" ? "tanpa hijab" : h}
+              active={config.hijab === h}
+              onClick={() => set({ hijab: h })}
+            />
+          ))}
+        </Section>
+      )}
+      {config.hijab !== "none" && gender === "P" && (
+        <Section title="Warna Hijab">
+          {VIBE_COLORS.map((c) => (
+            <Swatch key={c} c={c} active={config.hijabWarna === c} onClick={() => set({ hijabWarna: c })} />
+          ))}
+        </Section>
+      )}
+
+      {config.hijab === "none" && (
+        <>
+          <Section title="Model Rambut">
+            {rambutList.map((r) => (
+              <IconChoice
+                key={r}
+                icon={<HairIcon model={r} color={config.rambutWarna} skin={config.kulit} />}
+                label={r}
+                active={config.rambutModel === r}
+                onClick={() => set({ rambutModel: r })}
+              />
+            ))}
+          </Section>
+          <Section title="Warna Rambut">
+            {RAMBUT_WARNA.map((c) => (
+              <Swatch key={c} c={c} active={config.rambutWarna === c} onClick={() => set({ rambutWarna: c })} />
+            ))}
+          </Section>
+        </>
+      )}
+
       {tni ? (
-        <Section title="Seragam (Terkunci)">
-          <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-[11px] text-[#f4ecdd]/70">
-            <Lock size={11} className="text-[#f2cc8f]" /> Loreng TNI + boots hitam — standar Yonif 411/Raider
+        <Section title="Seragam" hint="terkunci — standar Yonif 411">
+          <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-[11px] text-[#f4ecdd]/75">
+            <Lock size={12} className="text-[#f2cc8f]" /> Loreng TNI lengkap + boots hitam
           </div>
         </Section>
       ) : (
         <>
-          <Section title="Atasan">
+          <Section title="Baju Atasan">
             {ATASAN_OPTIONS.map((a) => (
-              <Pill key={a} label={a} active={config.atasan === a} onClick={() => set({ atasan: a })} />
+              <IconChoice key={a} icon={<TopIcon model={a} color={config.atasanWarna} />} label={a} active={config.atasan === a} onClick={() => set({ atasan: a })} />
             ))}
           </Section>
           <Section title="Warna Atasan">
@@ -119,9 +173,10 @@ function Customizer({ config, setConfig, gender, mode, locked }: { config: Avata
               <Swatch key={c} c={c} active={config.atasanWarna === c} onClick={() => set({ atasanWarna: c })} />
             ))}
           </Section>
+
           <Section title="Bawahan">
             {bawahanList.map((b) => (
-              <Pill key={b} label={b} active={config.bawahan === b} onClick={() => set({ bawahan: b })} />
+              <IconChoice key={b} icon={<BottomIcon model={b} color={config.bawahanWarna} />} label={b} active={config.bawahan === b} onClick={() => set({ bawahan: b })} />
             ))}
           </Section>
           <Section title="Warna Bawahan">
@@ -129,9 +184,10 @@ function Customizer({ config, setConfig, gender, mode, locked }: { config: Avata
               <Swatch key={c} c={c} active={config.bawahanWarna === c} onClick={() => set({ bawahanWarna: c })} />
             ))}
           </Section>
+
           <Section title="Sepatu">
             {SEPATU_OPTIONS.map((s) => (
-              <Pill key={s} label={s} active={config.sepatu === s} onClick={() => set({ sepatu: s })} />
+              <IconChoice key={s} icon={<ShoeIcon model={s} color={config.sepatuWarna} />} label={s} active={config.sepatu === s} onClick={() => set({ sepatu: s })} />
             ))}
           </Section>
           <Section title="Warna Sepatu">
@@ -141,36 +197,16 @@ function Customizer({ config, setConfig, gender, mode, locked }: { config: Avata
           </Section>
         </>
       )}
+
       <Section title={tni ? "Baret" : "Topi"}>
         {topiList.map((t) => (
-          <Pill key={t} label={t} active={config.topi === t} onClick={() => set({ topi: t })} />
+          <IconChoice key={t} icon={<HatIcon model={t} skin={config.kulit} />} label={t === "none" ? "tanpa topi" : t} active={config.topi === t} onClick={() => set({ topi: t })} />
         ))}
       </Section>
-      {gender === "P" && (
-        <>
-          <Section title="Hijab (opsional)">
-            {HIJAB_OPTIONS.map((h) => (
-              <Pill key={h} label={h === "none" ? "tanpa hijab" : h} active={config.hijab === h} onClick={() => set({ hijab: h })} />
-            ))}
-          </Section>
-          {config.hijab !== "none" && (
-            <Section title="Warna Hijab">
-              {VIBE_COLORS.map((c) => (
-                <Swatch key={c} c={c} active={config.hijabWarna === c} onClick={() => set({ hijabWarna: c })} />
-              ))}
-            </Section>
-          )}
-        </>
-      )}
-      <Section title="Wajah">
-        {WAJAH_OPTIONS.map((w) => (
-          <Pill key={w} label={w} active={config.wajah === w} onClick={() => set({ wajah: w })} />
-        ))}
-        <Pill label="kacamata" active={config.kacamata} onClick={() => set({ kacamata: !config.kacamata })} />
-      </Section>
-      <Section title="Item Tangan">
+
+      <Section title="Benda di Tangan">
         {itemList.map((i) => (
-          <Pill key={i} label={i} active={config.itemTangan === i} onClick={() => set({ itemTangan: i })} />
+          <IconChoice key={i} icon={<ItemIcon model={i} />} label={i === "none" ? "tangan kosong" : i} active={config.itemTangan === i} onClick={() => set({ itemTangan: i })} />
         ))}
       </Section>
     </div>
@@ -564,12 +600,20 @@ export default function FormPage() {
                 </div>
 
                 {step === 3 && (
-                  <div className="order-1 h-[38vh] min-h-[280px] lg:h-auto">
-                    <div className="relative h-full w-full overflow-hidden rounded-2xl border border-[#f2cc8f]/20" style={{ background: "radial-gradient(circle at 50% 30%, #3a2c3a, #1d1620 80%)" }}>
+                  <div className="order-1 h-[42vh] min-h-[320px] lg:sticky lg:top-6 lg:h-[62vh]">
+                    <div className="relative h-full w-full overflow-hidden rounded-2xl border border-[#f2cc8f]/20" style={{ background: "radial-gradient(circle at 50% 28%, #3a2c3a, #1d1620 80%)" }}>
                       <AvatarPreview config={avatarShown} />
-                      <div className="pointer-events-none absolute bottom-2.5 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.3em] text-[#f2cc8f]/90 backdrop-blur">
-                        Pratinjau 360°
+                      <div className="pointer-events-none absolute bottom-2.5 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.25em] text-[#f2cc8f]/90 backdrop-blur">
+                        Seret untuk memutar · cubit/scroll untuk zoom
                       </div>
+                      {!isAdmin && (
+                        <button
+                          onClick={() => setAvatar(randomAvatar(gender, mode))}
+                          className="absolute right-2.5 top-2.5 flex items-center gap-1.5 rounded-xl border border-white/20 bg-black/50 px-3 py-2 text-[10px] font-bold text-[#f4ecdd]/85 backdrop-blur transition hover:bg-black/70 hover:text-white"
+                        >
+                          <Shuffle size={12} /> Acak
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

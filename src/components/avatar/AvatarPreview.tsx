@@ -9,7 +9,7 @@ import type { AvatarConfig } from "@/lib/constants";
 export default function AvatarPreview({ config, spin = true }: { config: AvatarConfig; spin?: boolean }) {
   return (
     <div className="relative h-full w-full">
-      <Canvas dpr={[1, 1.75]} camera={{ position: [0, 1.25, 2.6], fov: 42 }} gl={{ antialias: true, alpha: true }}>
+      <Canvas dpr={[1, 1.75]} camera={{ position: [0, 1.25, 3.35], fov: 42 }} gl={{ antialias: true, alpha: true }}>
         <Suspense fallback={null}>
           <ambientLight intensity={0.75} />
           <hemisphereLight args={["#ffe9c9", "#3a2d22", 0.8]} />
@@ -29,13 +29,15 @@ export default function AvatarPreview({ config, spin = true }: { config: AvatarC
         </Suspense>
         <OrbitControls
           makeDefault
-          enableZoom={false}
+          enableZoom
+          minDistance={2.2}
+          maxDistance={4.6}
           enablePan={false}
           autoRotate={spin}
-          autoRotateSpeed={1.6}
-          minPolarAngle={Math.PI / 2.6}
-          maxPolarAngle={Math.PI / 1.9}
-          target={[0, 0.82, 0]}
+          autoRotateSpeed={0.45}
+          minPolarAngle={Math.PI / 2.8}
+          maxPolarAngle={Math.PI / 1.85}
+          target={[0, 0.88, 0]}
         />
       </Canvas>
     </div>

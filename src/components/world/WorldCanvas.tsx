@@ -11,48 +11,9 @@ import UkswScene from "./scenes/UkswScene";
 import { PplPlazaScene, SchoolScene } from "./scenes/PplScene";
 import YonifScene from "./scenes/YonifScene";
 import BukitScene from "./scenes/BukitScene";
+import { PlayerRig, PlayerAvatar } from "./player";
 
-type Ctrl = { target: THREE.Vector3; update: () => void } | null;
-
-const DEFAULT_VIEWS: Record<string, { pos: [number, number, number]; look: [number, number, number] }> = {
-  hub: { pos: [0, 8.5, 17], look: [0, 1.6, -2] },
-  uksw: { pos: [28, 15, 36], look: [0, 2, -12] },
-  ppl: { pos: [0, 11, 20], look: [0, 1.8, -5] },
-  "ppl-school": { pos: [0, 9.5, 21], look: [0, 1.5, -4] },
-  yonif: { pos: [11, 8.5, 15], look: [0, 1.2, -2] },
-  bukit: { pos: [0, 7.5, 15], look: [0, 2.2, -6] },
-};
-
-function CameraRig({ controls }: { controls: React.MutableRefObject<Ctrl> }) {
-  const view = useStore((s) => s.view);
-  const scene = useStore((s) => s.scene);
-  const school = useStore((s) => s.school);
-  const { camera } = useThree();
-
-  useEffect(() => {
-    const key = scene === "ppl" && school ? "ppl-school" : scene;
-    const dv = DEFAULT_VIEWS[key] ?? DEFAULT_VIEWS.hub;
-    camera.position.set(dv.pos[0], dv.pos[1], dv.pos[2]);
-    if (controls.current) {
-      controls.current.target.set(dv.look[0], dv.look[1], dv.look[2]);
-      controls.current.update();
-    }
-  }, [scene, school, camera, controls]);
-
-  const tmpPos = new THREE.Vector3();
-  const tmpLook = new THREE.Vector3();
-  useFrame((_, delta) => {
-    if (!view || !controls.current) return;
-    tmpPos.set(...view.pos);
-    tmpLook.set(...view.look);
-    const k = 1 - Math.pow(0.008, delta);
-    camera.position.lerp(tmpPos, k);
-    controls.current.target.lerp(tmpLook, k);
-    controls.current.update();
-    if (camera.position.distanceTo(tmpPos) < 0.12) useStore.getState().setView(null);
-  });
-  return null;
-}
+type Ctrl = { target: THREE.Vector3; update: () => void; enabled: boolean } | null;
 
 const ATMO: Record<Hubs, {
   sky: boolean;
@@ -67,29 +28,29 @@ const ATMO: Record<Hubs, {
   stars: boolean;
 }> = {
   hub: {
-    sky: false, sun: [0, 10, 0], rayleigh: 1, bg: "#221812",
-    fog: ["#221812", 22, 62], amb: 0.55, dir: 1.1, dirColor: "#ffd9a0",
-    hemi: ["#ffdfb0", "#3a2d22", 0.7], stars: false,
+    sky: true, sun: [-40, 14, -60], rayleigh: 2.2, bg: "#f0c79a",
+    fog: ["#e8c9a0", 48, 130], amb: 0.95, dir: 1.7, dirColor: "#fff0d2",
+    hemi: ["#ffe6c0", "#6b5a46", 1.0], stars: false,
   },
   uksw: {
-    sky: true, sun: [60, 30, -60], rayleigh: 1.1, bg: "#cfe0d8",
-    fog: ["#dfe7d5", 42, 115], amb: 0.7, dir: 1.5, dirColor: "#fff1d0",
-    hemi: ["#cfe4f0", "#7d9c62", 0.75], stars: false,
+    sky: true, sun: [60, 34, -60], rayleigh: 1.1, bg: "#cfe0d8",
+    fog: ["#e3ead9", 62, 150], amb: 1.05, dir: 1.8, dirColor: "#fff6e2",
+    hemi: ["#d8ecf8", "#8aab6a", 1.05], stars: false,
   },
   ppl: {
-    sky: true, sun: [-85, 10, 35], rayleigh: 2.6, bg: "#f4c58a",
-    fog: ["#f2c58e", 40, 110], amb: 0.6, dir: 1.6, dirColor: "#ffc477",
-    hemi: ["#ffd9a0", "#8aa05a", 0.65], stars: false,
+    sky: true, sun: [-85, 14, 35], rayleigh: 2.4, bg: "#f4c58a",
+    fog: ["#f4cea0", 56, 140], amb: 0.95, dir: 1.85, dirColor: "#ffd9a0",
+    hemi: ["#ffe3b8", "#93a964", 0.95], stars: false,
   },
   yonif: {
-    sky: false, sun: [0, 10, 0], rayleigh: 1, bg: "#141c28",
-    fog: ["#18222f", 14, 58], amb: 0.42, dir: 0.5, dirColor: "#9db4ff",
-    hemi: ["#3c4b66", "#151d18", 0.6], stars: true,
+    sky: false, sun: [0, 10, 0], rayleigh: 1, bg: "#1b2636",
+    fog: ["#223049", 30, 95], amb: 0.78, dir: 0.95, dirColor: "#b9c9ff",
+    hemi: ["#5a6d93", "#28332a", 0.9], stars: true,
   },
   bukit: {
-    sky: true, sun: [4, 2.2, -100], rayleigh: 3.4, bg: "#2f2544",
-    fog: ["#453a5e", 26, 88], amb: 0.5, dir: 0.9, dirColor: "#ff9d6c",
-    hemi: ["#7a6ba8", "#2c3527", 0.6], stars: true,
+    sky: true, sun: [6, 1.6, -100], rayleigh: 3.2, bg: "#2f2544",
+    fog: ["#5d4f78", 44, 120], amb: 0.85, dir: 1.3, dirColor: "#ffb183",
+    hemi: ["#9c8ccb", "#3c4733", 0.9], stars: true,
   },
 };
 
@@ -130,22 +91,22 @@ export default function WorldCanvas() {
         {scene === "ppl" && school && <SchoolScene schoolId={school} />}
         {scene === "yonif" && <YonifScene />}
         {scene === "bukit" && <BukitScene />}
+        <PlayerAvatar />
       </Suspense>
       <OrbitControls
         ref={controls as never}
         makeDefault
         enableDamping
-        dampingFactor={0.07}
-        minDistance={3.5}
-        maxDistance={46}
-        maxPolarAngle={Math.PI / 2 - 0.06}
-        minPolarAngle={0.12}
-        enablePan
-        panSpeed={0.7}
-        rotateSpeed={0.65}
-        onStart={() => useStore.getState().setView(null)}
+        dampingFactor={0.08}
+        minDistance={3.2}
+        maxDistance={18}
+        maxPolarAngle={Math.PI / 2 - 0.08}
+        minPolarAngle={0.25}
+        enablePan={false}
+        rotateSpeed={0.75}
+        zoomSpeed={0.8}
       />
-      <CameraRig controls={controls} />
+      <PlayerRig controls={controls} />
     </Canvas>
   );
 }

@@ -26,21 +26,19 @@ export const KULIT_OPTIONS = ["#f6d7b8", "#eec39a", "#dfa878", "#c98a5a", "#a96b
 export const TUBUH_OPTIONS = ["langsing", "sedang", "tegap"] as const;
 export const WAJAH_OPTIONS = ["oval", "bulat", "tirus", "kotak"] as const;
 
-export const RAMBUT_P = [
-  "ponytail", "panjang-lurus", "panjang-bergelombang", "bob", "cepol",
-  "layer", "keriting", "lob", "wolf-cut", "twin-tails",
-];
-export const RAMBUT_L = ["pendek", "undercut", "comma", "mohawk-tipis", "side-part", "curtain"];
-export const RAMBUT_WARNA = ["#17130f", "#2b1d12", "#4a2c14", "#6b3f1d", "#8a5a2c", "#3f3f46", "#b8422e", "#d9c186"];
+// Daftar opsi sengaja diringkas agar setiap pilihan benar-benar terlihat beda di 3D.
+export const RAMBUT_P = ["ponytail", "panjang-lurus", "bob", "cepol", "keriting", "lob"];
+export const RAMBUT_L = ["pendek", "undercut", "side-part", "curtain"];
+export const RAMBUT_WARNA = ["#17130f", "#3b2314", "#6b3f1d", "#8a5a2c", "#4a4a52", "#b8422e"];
 
-export const ATASAN_OPTIONS = ["kemeja", "blouse", "cardigan", "sweater", "kaos", "tunik", "batik", "hoodie"];
-export const BAWAHAN_OPTIONS = ["celana-panjang", "jeans", "kulot", "rok-panjang", "rok-selutut"];
-export const SEPATU_OPTIONS = ["sneakers", "flat", "loafers", "boots", "heels-rendah", "sandal"];
-export const TOPI_OPTIONS = ["none", "topi", "bucket", "baret-hijau", "baret-ungu", "baret-hitam", "baret-coklat"];
+export const ATASAN_OPTIONS = ["kemeja", "kaos", "cardigan", "batik", "hoodie"];
+export const BAWAHAN_OPTIONS = ["celana-panjang", "jeans", "kulot", "rok-panjang"];
+export const SEPATU_OPTIONS = ["sneakers", "flat", "boots"];
+export const TOPI_OPTIONS = ["none", "topi", "bucket"];
 export const TOPI_TNI = ["baret-hijau", "baret-ungu", "baret-hitam", "baret-coklat"];
-export const HIJAB_OPTIONS = ["none", "segi-empat", "pashmina", "instan", "bergo"];
-export const ITEM_TANGAN_OPTIONS = ["none", "buku", "bunga", "bendera", "trofi", "tas", "pointer"];
-export const ITEM_TANGAN_TNI = ["none", "buku", "tongkat", "pointer"];
+export const HIJAB_OPTIONS = ["none", "segi-empat", "pashmina", "instan"];
+export const ITEM_TANGAN_OPTIONS = ["none", "buku", "bunga", "tas", "trofi"];
+export const ITEM_TANGAN_TNI = ["none", "buku", "pointer"];
 
 export const VIBE_COLORS = [
   "#e07a5f", "#f2cc8f", "#81b29a", "#3d405b", "#5f8ac7", "#9b6dd6",
@@ -113,7 +111,7 @@ export function paginateText(isi: string): string[] {
 export function randomAvatar(gender: "L" | "P", mode: ModeAvatar = "biasa"): AvatarConfig {
   const pick = <T,>(arr: readonly T[]) => arr[Math.floor(Math.random() * arr.length)] as T;
   const rambut = gender === "P" ? pick(RAMBUT_P) : pick(RAMBUT_L);
-  const bawahan = gender === "P" ? pick(["kulot", "rok-panjang", "rok-selutut", "celana-panjang"] as const) : pick(["celana-panjang", "jeans"] as const);
+  const bawahan = gender === "P" ? pick(["kulot", "rok-panjang", "celana-panjang", "jeans"] as const) : pick(["celana-panjang", "jeans"] as const);
   if (mode === "tni") {
     return {
       kulit: pick(KULIT_OPTIONS), tubuh: pick(TUBUH_OPTIONS), rambutModel: gender === "P" ? pick(["bob", "cepol", "lob"] as const) : pick(RAMBUT_L),
@@ -146,7 +144,7 @@ export function dosenAvatar(gender: "L" | "P"): AvatarConfig {
   const pick = <T,>(arr: readonly T[]) => arr[Math.floor(Math.random() * arr.length)] as T;
   const formal = ["#2f2a3c", "#3d405b", "#5c4033", "#274156", "#6d3b3b"];
   return {
-    kulit: pick(KULIT_OPTIONS), tubuh: "sedang", rambutModel: gender === "P" ? pick(["bob", "cepol", "lob"] as const) : pick(["pendek", "side-part", "comma"] as const),
+    kulit: pick(KULIT_OPTIONS), tubuh: "sedang", rambutModel: gender === "P" ? pick(["bob", "cepol", "lob"] as const) : pick(["pendek", "side-part"] as const),
     rambutWarna: pick(RAMBUT_WARNA.slice(0, 5)), wajah: "oval",
     atasan: gender === "P" ? "blouse" : "kemeja", atasanWarna: pick(formal),
     bawahan: "celana-panjang", bawahanWarna: "#26232e", sepatu: "loafers", sepatuWarna: "#17130f",

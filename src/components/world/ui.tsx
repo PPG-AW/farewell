@@ -7,7 +7,7 @@ import {
   Landmark, GraduationCap, Tent, Mountain, MapPin, Film, Camera, EyeOff, Eye, Star, ScrollText,
 } from "lucide-react";
 import { useStore } from "@/store/useStore";
-import { HUB_META, UKSW_ZONES, SEKOLAH_LIST, MOODS } from "@/lib/constants";
+import { HUB_META, SEKOLAH_LIST, MOODS } from "@/lib/constants";
 import clsx from "clsx";
 
 const ZONA_ICON: Record<string, typeof Landmark> = { hub: Home, uksw: Landmark, ppl: GraduationCap, yonif: Tent, bukit: Mountain };
@@ -231,14 +231,6 @@ export function HUD() {
   const ZoneIcon = ZONA_ICON[scene] ?? Home;
   const schoolMeta = school ? SEKOLAH_LIST.find((s) => s.id === school) : null;
 
-  const flyTo = (poi: readonly number[]) => {
-    const z = poi[2];
-    setView({
-      pos: [poi[0] * 0.92, 6.5, z + (z >= 0 ? -8.5 : 7.5)],
-      look: [poi[0], 1.4, z],
-    });
-  };
-
   if (hideUI) {
     return (
       <button
@@ -327,29 +319,6 @@ export function HUD() {
         >
           <LogOut size={16} />
         </button>
-      </div>
-
-      {/* ── POI fly-to untuk kampus UKSW ── */}
-      {scene === "uksw" && (
-        <div className="pointer-events-auto absolute bottom-4 left-1/2 flex max-w-[94vw] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-white/15 bg-black/55 p-2 backdrop-blur-md sm:bottom-6">
-          <MapPin size={13} className="mx-1 text-[#8ecae6]" />
-          {UKSW_ZONES.map((z) => (
-            <button
-              key={z.id}
-              onClick={() => flyTo(z.poi)}
-              className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-[#f4ecdd]/80 transition hover:bg-[#8ecae6]/20 hover:text-white"
-            >
-              {z.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── hint kontrol ── */}
-      <div className="absolute bottom-4 right-4 hidden rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-[9px] leading-relaxed text-[#f4ecdd]/55 backdrop-blur-sm sm:bottom-6 sm:block">
-        Seret untuk memutar · Scroll untuk zoom
-        <br />
-        Klik amplop, avatar & pintu untuk membaca
       </div>
 
       {/* ── tombol finale ── */}

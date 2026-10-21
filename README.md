@@ -112,7 +112,17 @@ npm run dev                   # http://localhost:3000
 | `/world` | Dunia 3D room-based: **Hub Utama** (4 portal + papan progres), **Kampus UKSW** (gerbang, lapangan, lorong E102–E108, tangga spiral, aula seminar, perpus Lt.7), **Area PPL** (persimpangan → 5 sekolah bernuansa beda), **Yonif 411** (kabut pagi, api unggun, pasukan TNI), **Bukit Salatiga** (senja, lentera kenangan) |
 | `/dashboard` | Semua kontrol admin (lihat tabel Akun Master) |
 
-**Interaksi dunia:** seret = memutar kamera · scroll = zoom · klik amplop/avatar/pintu = membaca surat atau narasi · panel bawah (di UKSW) = teleport antar ruang.
+**Kontrol jalan-jalan (karakter benar-benar berjalan):**
+
+| Aksi | Desktop | Mobile |
+|---|---|---|
+| Jalan | `W A S D` / tombol panah | Joystick kiri bawah |
+| Lari | Tahan `Shift` | Dorong joystick penuh |
+| Putar kamera | Seret layar | Geser layar |
+| Zoom | Scroll | Cubit |
+| Berinteraksi | `E` atau klik objek | Ketuk tombol prompt / objek |
+
+Dekati teman, amplop, papan, atau portal — tombol interaksi muncul otomatis saat kamu berada dalam jangkauan. Teman-teman **tersebar acak** di tiap zona (tidak berjejer), jadi ada sensasi menjelajah untuk menemukan mereka.
 
 **Alur pengalaman:** Login → Form → Ruang tunggu (menunggu 29/29) → Dunia terbuka → Baca 35 ucapan (HUD progres kiri atas) → 100% → **Grand Finale** sinematik 12 adegan → **Surat dari Kita untuk Kita** (amplop, polaroid, konstelasi 2026, kutipan teman, dedikasi personal, sunrise 29 siluet) → **Ending** (jelajah lagi / balas / screenshot / keluar).
 

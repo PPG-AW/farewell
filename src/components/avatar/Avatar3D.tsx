@@ -2,7 +2,7 @@
 
 import { useRef, useMemo, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Html, Sparkles, useCursor } from "@react-three/drei";
+import { Html, useCursor } from "@react-three/drei";
 import * as THREE from "three";
 import type { AvatarConfig } from "@/lib/constants";
 
@@ -21,11 +21,23 @@ type Props = {
   nameTag?: string;
   role?: string;
   isSelf?: boolean;
-  ghost?: boolean;
   onClick?: () => void;
   showShadow?: boolean;
+  /** 0 = diam, 1 = berjalan penuh (menggerakkan kaki & tangan) */
+  walk?: number;
+  /** variasi fase animasi agar NPC tidak serempak */
+  phase?: number;
+  highlight?: boolean;
 };
 
+/**
+ * Avatar low-poly dengan proporsi manusia yang benar.
+ * Tinggi total ±1.75 unit. Titik (0,0,0) = telapak kaki.
+ *   kaki   0.00 – 0.78
+ *   badan  0.78 – 1.32
+ *   leher  1.32 – 1.38
+ *   kepala 1.38 – 1.75
+ */
 export default function Avatar3D({
   config: c,
   position = [0, 0, 0],
@@ -34,62 +46,70 @@ export default function Avatar3D({
   nameTag,
   role,
   isSelf,
-  ghost,
   onClick,
   showShadow = true,
+  walk = 0,
+  phase,
+  highlight,
 }: Props) {
   const root = useRef<THREE.Group>(null);
-  const bodyRef = useRef<THREE.Group>(null);
-  const eyesRef = useRef<THREE.Group>(null);
+  const body = useRef<THREE.Group>(null);
+  const legL = useRef<THREE.Group>(null);
+  const legR = useRef<THREE.Group>(null);
+  const armL = useRef<THREE.Group>(null);
+  const armR = useRef<THREE.Group>(null);
+  const eyes = useRef<THREE.Group>(null);
   const [hover, setHover] = useState(false);
   useCursor(hover && !!onClick);
 
-  const seed = useMemo(() => Math.random() * 10, []);
-  const bodyW = c.tubuh === "langsing" ? 0.88 : c.tubuh === "tegap" ? 1.14 : 1;
-  const isRok = c.bawahan === "rok-panjang" || c.bawahan === "rok-selutut";
-  const hasHijab = c.hijab !== "none";
+  const seed = useMemo(() => phase ?? Math.random() * 10, [phase]);
+
+  // ─── proporsi ───
+  const w = c.tubuh === "langsing" ? 0.9 : c.tubuh === "tegap" ? 1.12 : 1; // lebar relatif
+  const isRok = c.bawahan === "rok-panjang" || c.bawahan === "rok-selutut" || c.bawahan === "kulot";
+  const rokPanjang = c.bawahan === "rok-panjang";
   const isTni = c.atasan === "seragam-tni";
-  const op = ghost ? 0.4 : 1;
-  const transparent = ghost === true;
+  const hijab = c.hijab && c.hijab !== "none";
+  const lenganPanjang = isTni || ["kemeja", "cardigan", "hoodie", "batik"].includes(c.atasan);
+
+  const SHOULDER_Y = 1.24;
+  const HIP_Y = 0.78;
+  const ARM_LEN = 0.46;
+  const LEG_LEN = 0.74;
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime() + seed;
-    if (bodyRef.current) {
-      const breathe = 1 + Math.sin(t * 2.1) * 0.012;
-      bodyRef.current.scale.set(1, breathe, 1);
-      bodyRef.current.rotation.y = Math.sin(t * 0.45) * 0.06;
-      bodyRef.current.position.y = Math.sin(t * 2.1) * 0.008;
+    const sw = Math.sin(t * (walk > 0.05 ? 9 : 1.6));
+
+    if (body.current) {
+      // nafas + bobbing saat jalan
+      body.current.position.y = walk > 0.05 ? Math.abs(Math.sin(t * 9)) * 0.045 : Math.sin(t * 1.6) * 0.012;
+      body.current.rotation.z = walk > 0.05 ? sw * 0.03 : 0;
+      body.current.rotation.y = walk > 0.05 ? 0 : Math.sin(t * 0.5) * 0.07;
     }
-    if (eyesRef.current) {
-      const blink = t % 3.9 < 0.12 ? 0.12 : 1;
-      eyesRef.current.scale.y = blink;
-    }
-    if (isSelf && root.current) {
-      root.current.rotation.y = rotationY + Math.sin(t * 0.8) * 0.1;
-    }
+    // ayunan kaki & tangan
+    const amp = 0.08 + walk * 0.72;
+    if (legL.current) legL.current.rotation.x = sw * amp * (walk > 0.05 ? 1 : 0.12);
+    if (legR.current) legR.current.rotation.x = -sw * amp * (walk > 0.05 ? 1 : 0.12);
+    if (armL.current) armL.current.rotation.x = -sw * amp * 0.85 + (walk > 0.05 ? 0 : 0.04);
+    if (armR.current) armR.current.rotation.x = sw * amp * 0.85 + (walk > 0.05 ? 0 : 0.04);
+
+    if (eyes.current) eyes.current.scale.y = t % 4.2 < 0.13 ? 0.1 : 1;
+    if (root.current && isSelf) root.current.position.y = position[1];
   });
 
-  const faceW = c.wajah === "bulat" ? 1.08 : c.wajah === "tirus" ? 0.92 : 1;
-  const faceH = c.wajah === "kotak" ? 0.94 : c.wajah === "tirus" ? 1.06 : 1;
+  const M = (color: string, rough = 0.88) => <meshStandardMaterial color={color} roughness={rough} flatShading />;
 
-  const M = (color: string, extra: Record<string, unknown> = {}) => (
-    <meshStandardMaterial
-      color={color}
-      roughness={0.85}
-      metalness={0.02}
-      flatShading
-      transparent={transparent}
-      opacity={op}
-      {...extra}
-    />
-  );
+  // lengan: warna baju kalau lengan panjang, warna kulit kalau pendek
+  const sleeveColor = lenganPanjang ? c.atasanWarna : c.kulit;
+  const topColor = isTni ? "#4a5d3a" : c.atasanWarna;
 
   return (
     <group
+      ref={root}
       position={position}
       rotation={[0, rotationY, 0]}
       scale={scale}
-      ref={root}
       onClick={(e) => {
         if (!onClick) return;
         e.stopPropagation();
@@ -104,283 +124,251 @@ export default function Avatar3D({
     >
       {showShadow && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
-          <circleGeometry args={[0.36, 16]} />
-          <meshBasicMaterial color="#000000" transparent opacity={ghost ? 0.1 : 0.25} />
+          <circleGeometry args={[0.33, 14]} />
+          <meshBasicMaterial color="#000000" transparent opacity={0.26} />
         </mesh>
       )}
-      {isSelf && (
-        <>
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-            <ringGeometry args={[0.42, 0.5, 24]} />
-            <meshBasicMaterial color="#f2cc8f" transparent opacity={0.85} />
-          </mesh>
-          <Sparkles count={18} scale={1.4} size={3} speed={0.5} position={[0, 0.9, 0]} color="#ffe9b0" />
-        </>
+      {(isSelf || highlight) && (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+          <ringGeometry args={[0.4, 0.5, 22]} />
+          <meshBasicMaterial color={isSelf ? "#f2cc8f" : "#8ecae6"} transparent opacity={0.8} />
+        </mesh>
       )}
 
-      <group ref={bodyRef}>
-        {/* ───── Sepatu ───── */}
-        {[-1, 1].map((s) => (
-          <mesh key={`shoe${s}`} position={[s * 0.11 * bodyW, 0.05, 0.03]}>
-            <boxGeometry args={[0.15, 0.1, 0.24]} />
-            {M(c.sepatuWarna)}
-          </mesh>
+      <group ref={body}>
+        {/* ══ KAKI ══ */}
+        {([-1, 1] as const).map((s) => (
+          <group key={`leg${s}`} ref={s === -1 ? legL : legR} position={[s * 0.1 * w, HIP_Y, 0]}>
+            {/* paha + betis */}
+            <mesh position={[0, -LEG_LEN / 2 + 0.06, 0]}>
+              <boxGeometry args={[0.15 * w, LEG_LEN - 0.12, 0.16]} />
+              {M(isRok && rokPanjang ? c.bawahanWarna : isRok ? c.kulit : c.bawahanWarna)}
+            </mesh>
+            {/* sepatu */}
+            <group position={[0, -LEG_LEN + 0.06, 0.03]}>
+              {c.sepatu === "boots" ? (
+                <mesh position={[0, 0.02, 0]}>
+                  <boxGeometry args={[0.17 * w, 0.26, 0.26]} />
+                  {M(c.sepatuWarna)}
+                </mesh>
+              ) : (
+                <>
+                  <mesh position={[0, -0.02, 0.02]}>
+                    <boxGeometry args={[0.16 * w, 0.1, 0.27]} />
+                    {M(c.sepatuWarna)}
+                  </mesh>
+                  {c.sepatu === "sneakers" && (
+                    <mesh position={[0, -0.06, 0.02]}>
+                      <boxGeometry args={[0.172 * w, 0.045, 0.28]} />
+                      {M("#f4f1de")}
+                    </mesh>
+                  )}
+                </>
+              )}
+            </group>
+          </group>
         ))}
 
-        {/* ───── Kaki / Rok ───── */}
-        {isRok ? (
-          <mesh position={[0, c.bawahan === "rok-panjang" ? 0.3 : 0.33, 0]}>
-            <cylinderGeometry args={[0.19 * bodyW, 0.3 * bodyW, c.bawahan === "rok-panjang" ? 0.5 : 0.44, 8]} />
+        {/* ══ ROK / KULOT (menutup pangkal kaki) ══ */}
+        {isRok && (
+          <mesh position={[0, HIP_Y - (rokPanjang ? 0.26 : 0.16), 0]}>
+            <cylinderGeometry args={[0.21 * w, rokPanjang ? 0.34 * w : 0.3 * w, rokPanjang ? 0.56 : 0.34, 10]} />
             {M(c.bawahanWarna)}
           </mesh>
-        ) : (
-          [-1, 1].map((s) => (
-            <mesh key={`leg${s}`} position={[s * 0.11 * bodyW, 0.26, 0]}>
-              <boxGeometry args={[0.14, 0.34, 0.16]} />
-              {M(c.bawahanWarna)}
-            </mesh>
-          ))
         )}
-        {isTni &&
-          [-1, 1].map((s) => (
-            <mesh key={`knee${s}`} position={[s * 0.11 * bodyW, 0.3, 0.06]}>
-              <boxGeometry args={[0.15, 0.1, 0.08]} />
-              {M("#31402a")}
-            </mesh>
-          ))}
 
-        {/* ───── Badan ───── */}
-        <mesh position={[0, 0.64, 0]}>
-          <cylinderGeometry args={[0.2 * bodyW, 0.26 * bodyW, 0.46, 8]} />
-          {M(c.atasanWarna)}
+        {/* ══ PINGGUL ══ */}
+        <mesh position={[0, HIP_Y + 0.05, 0]}>
+          <boxGeometry args={[0.34 * w, 0.16, 0.21]} />
+          {M(isRok ? c.bawahanWarna : c.bawahanWarna)}
         </mesh>
-        {(c.atasan === "kemeja" || isTni) && (
-          <mesh position={[0, 0.74, 0.2 * bodyW - 0.02]}>
-            <boxGeometry args={[0.05, 0.24, 0.02]} />
-            {M(isTni ? "#3d4f31" : "#ffffff44")}
-          </mesh>
-        )}
-        {isTni && (
+
+        {/* ══ BADAN / BAJU ══ */}
+        <mesh position={[0, (HIP_Y + SHOULDER_Y) / 2 + 0.04, 0]}>
+          <boxGeometry args={[0.38 * w, SHOULDER_Y - HIP_Y - 0.02, 0.23]} />
+          {M(topColor)}
+        </mesh>
+        {/* kerah */}
+        {(c.atasan === "kemeja" || c.atasan === "batik" || isTni) && (
           <>
-            {[-1, 1].map((s) => (
-              <mesh key={`pocket${s}`} position={[s * 0.09, 0.72, 0.2 * bodyW - 0.02]}>
-                <boxGeometry args={[0.08, 0.06, 0.025]} />
-                {M("#3d4f31")}
-              </mesh>
-            ))}
-            <mesh position={[0, 0.44, 0]}>
-              <cylinderGeometry args={[0.27 * bodyW, 0.27 * bodyW, 0.06, 8]} />
-              {M("#1c1c20")}
+            <mesh position={[0, SHOULDER_Y - 0.035, 0.085]}>
+              <boxGeometry args={[0.17 * w, 0.07, 0.055]} />
+              {M(isTni ? "#3f5131" : shade(topColor, -18))}
+            </mesh>
+            {/* deretan kancing */}
+            <mesh position={[0, (HIP_Y + SHOULDER_Y) / 2 + 0.04, 0.118]}>
+              <boxGeometry args={[0.022, SHOULDER_Y - HIP_Y - 0.1, 0.012]} />
+              {M(shade(topColor, -28))}
             </mesh>
           </>
         )}
+        {/* motif batik */}
+        {c.atasan === "batik" &&
+          [0.1, -0.05, -0.2].map((y, i) => (
+            <mesh key={i} position={[(i % 2 ? 0.1 : -0.1) * w, SHOULDER_Y - 0.22 + y, 0.117]}>
+              <circleGeometry args={[0.035, 6]} />
+              <meshStandardMaterial color={shade(topColor, 42)} roughness={0.9} />
+            </mesh>
+          ))}
+        {/* resleting cardigan */}
+        {c.atasan === "cardigan" && (
+          <mesh position={[0, (HIP_Y + SHOULDER_Y) / 2 + 0.04, 0.118]}>
+            <boxGeometry args={[0.1 * w, SHOULDER_Y - HIP_Y - 0.06, 0.014]} />
+            {M(shade(topColor, 30))}
+          </mesh>
+        )}
+        {/* kantong + sabuk TNI */}
+        {isTni && (
+          <>
+            {([-1, 1] as const).map((s) => (
+              <mesh key={s} position={[s * 0.1 * w, SHOULDER_Y - 0.2, 0.118]}>
+                <boxGeometry args={[0.11, 0.09, 0.02]} />
+                {M("#3f5131")}
+              </mesh>
+            ))}
+            <mesh position={[0, HIP_Y + 0.14, 0]}>
+              <boxGeometry args={[0.4 * w, 0.07, 0.235]} />
+              {M("#20211c")}
+            </mesh>
+          </>
+        )}
+        {/* tudung hoodie */}
         {c.atasan === "hoodie" && (
-          <mesh position={[0, 0.85, -0.12]}>
-            <sphereGeometry args={[0.16 * bodyW, 6, 5]} />
-            {M(c.atasanWarna)}
+          <mesh position={[0, SHOULDER_Y - 0.01, -0.1]}>
+            <sphereGeometry args={[0.19 * w, 8, 6]} />
+            {M(shade(topColor, -14))}
           </mesh>
         )}
 
-        {/* ───── Tangan kirim item via config tangan kanan ───── */}
-        {[-1, 1].map((s) => (
-          <group key={`arm${s}`} position={[s * 0.26 * bodyW, 0.8, 0]} rotation={[0, 0, s * -0.22]}>
-            <mesh position={[0, -0.15, 0]}>
-              <cylinderGeometry args={[0.05, 0.055, 0.32, 6]} />
-              {M(c.atasanWarna)}
+        {/* ══ LENGAN ══ */}
+        {([-1, 1] as const).map((s) => (
+          <group key={`arm${s}`} ref={s === -1 ? armL : armR} position={[s * (0.19 * w + 0.042), SHOULDER_Y - 0.03, 0]}>
+            {/* bahu (selalu warna baju) */}
+            <mesh position={[0, -0.05, 0]}>
+              <boxGeometry args={[0.1, 0.15, 0.16]} />
+              {M(topColor)}
             </mesh>
-            <mesh position={[0, -0.35, 0]}>
-              <sphereGeometry args={[0.06, 6, 5]} />
+            {/* lengan atas–bawah */}
+            <mesh position={[0, -ARM_LEN / 2 - 0.06, 0]}>
+              <boxGeometry args={[0.095, ARM_LEN - 0.08, 0.125]} />
+              {M(sleeveColor)}
+            </mesh>
+            {/* manset kalau lengan panjang */}
+            {lenganPanjang && (
+              <mesh position={[0, -ARM_LEN + 0.02, 0]}>
+                <boxGeometry args={[0.1, 0.05, 0.13]} />
+                {M(shade(topColor, -22))}
+              </mesh>
+            )}
+            {/* telapak tangan */}
+            <mesh position={[0, -ARM_LEN - 0.04, 0]}>
+              <boxGeometry args={[0.085, 0.1, 0.11]} />
               {M(c.kulit)}
             </mesh>
+
+            {/* ── benda yang dipegang (tangan kanan = s===1) ── */}
+            {s === 1 && <HeldItem item={c.itemTangan} y={-ARM_LEN - 0.12} />}
+            {s === -1 && c.itemTangan === "tas" && (
+              <group position={[0.02, -ARM_LEN - 0.02, 0]}>
+                <mesh position={[0, -0.1, 0]}>
+                  <boxGeometry args={[0.17, 0.2, 0.1]} />
+                  {M("#6b4a2f")}
+                </mesh>
+                <mesh position={[0, 0.02, 0]}>
+                  <torusGeometry args={[0.07, 0.014, 5, 10]} />
+                  {M("#4c3626")}
+                </mesh>
+              </group>
+            )}
           </group>
         ))}
 
-        {/* ───── Item di tangan kanan ───── */}
-        {c.itemTangan === "buku" && (
-          <group position={[0.34 * bodyW, 0.42, 0.1]} rotation={[0.3, 0.3, 0]}>
-            <mesh>
-              <boxGeometry args={[0.2, 0.045, 0.15]} />
-              {M("#f4f1de")}
-            </mesh>
-            <mesh position={[0, 0.026, 0]}>
-              <boxGeometry args={[0.21, 0.012, 0.16]} />
-              {M("#c75146")}
-            </mesh>
-          </group>
-        )}
-        {c.itemTangan === "bunga" && (
-          <group position={[0.34 * bodyW, 0.44, 0.1]}>
-            <mesh position={[0, 0.08, 0]}>
-              <cylinderGeometry args={[0.012, 0.012, 0.2, 5]} />
-              {M("#4f772d")}
-            </mesh>
-            <mesh position={[0, 0.2, 0]}>
-              <icosahedronGeometry args={[0.06, 0]} />
-              {M("#e5989b")}
-            </mesh>
-          </group>
-        )}
-        {(c.itemTangan === "pointer" || c.itemTangan === "tongkat") && (
-          <mesh position={[0.36 * bodyW, 0.55, 0.08]} rotation={[0.4, 0, 0.15]}>
-            <cylinderGeometry args={[0.012, 0.012, c.itemTangan === "tongkat" ? 0.9 : 0.5, 5]} />
-            {M("#8a5a2c")}
-          </mesh>
-        )}
-        {c.itemTangan === "trofi" && (
-          <group position={[0.34 * bodyW, 0.5, 0.1]}>
-            <mesh>
-              <cylinderGeometry args={[0.05, 0.02, 0.12, 6]} />
-              {M("#e9a84a", { metalness: 0.6, roughness: 0.3 })}
-            </mesh>
-            <mesh position={[0, -0.08, 0]}>
-              <boxGeometry args={[0.1, 0.04, 0.1]} />
-              {M("#6b4a2f")}
-            </mesh>
-          </group>
-        )}
-        {c.itemTangan === "tas" && (
-          <mesh position={[-0.34 * bodyW, 0.5, 0]}>
-            <boxGeometry args={[0.16, 0.2, 0.08]} />
-            {M("#6b4a2f")}
-          </mesh>
-        )}
-        {c.itemTangan === "bendera" && (
-          <group position={[0.36 * bodyW, 0.6, 0.06]}>
-            <mesh>
-              <cylinderGeometry args={[0.012, 0.012, 0.7, 5]} />
-              {M("#8a5a2c")}
-            </mesh>
-            <mesh position={[0.08, 0.24, 0]}>
-              <planeGeometry args={[0.16, 0.1]} />
-              <meshBasicMaterial color="#c75146" side={THREE.DoubleSide} />
-            </mesh>
-            <mesh position={[0.08, 0.14, 0]}>
-              <planeGeometry args={[0.16, 0.1]} />
-              <meshBasicMaterial color="#f4f1de" side={THREE.DoubleSide} />
-            </mesh>
-          </group>
-        )}
+        {/* ══ LEHER ══ */}
+        <mesh position={[0, SHOULDER_Y + 0.05, 0]}>
+          <cylinderGeometry args={[0.062, 0.07, 0.1, 7]} />
+          {M(c.kulit)}
+        </mesh>
 
-        {/* ───── Kepala ───── */}
-        <group position={[0, 1.12, 0]} scale={[faceW, faceH, 1]}>
-          <mesh>
-            <sphereGeometry args={[0.23, 10, 8]} />
-            {M(ghost ? "#33394e" : c.kulit)}
+        {/* ══ KEPALA ══ */}
+        <group position={[0, SHOULDER_Y + 0.27, 0]}>
+          <mesh scale={[faceW(c.wajah), faceH(c.wajah), 0.97]}>
+            <boxGeometry args={[0.29, 0.32, 0.275]} />
+            {M(c.kulit, 0.82)}
           </mesh>
-          {/* mata + mulut */}
-          <group ref={eyesRef}>
-            {[-1, 1].map((s) => (
-              <mesh key={`eye${s}`} position={[s * 0.08, 0.03, 0.2]}>
-                <sphereGeometry args={[0.026, 6, 5]} />
-                <meshBasicMaterial color={ghost ? "#9db4ff" : "#17130f"} />
+          {/* telinga */}
+          {!hijab &&
+            ([-1, 1] as const).map((s) => (
+              <mesh key={s} position={[s * 0.16 * faceW(c.wajah), -0.01, 0]}>
+                <boxGeometry args={[0.03, 0.08, 0.07]} />
+                {M(c.kulit)}
               </mesh>
             ))}
+          {/* mata */}
+          <group ref={eyes}>
+            {([-1, 1] as const).map((s) => (
+              <group key={s} position={[s * 0.073, 0.025, 0.148]}>
+                <mesh>
+                  <boxGeometry args={[0.05, 0.045, 0.02]} />
+                  <meshBasicMaterial color="#fdfbf5" />
+                </mesh>
+                <mesh position={[0, 0, 0.012]}>
+                  <boxGeometry args={[0.026, 0.032, 0.012]} />
+                  <meshBasicMaterial color="#17130f" />
+                </mesh>
+              </group>
+            ))}
           </group>
-          <mesh position={[0, -0.075, 0.21]}>
-            <boxGeometry args={[0.07, 0.016, 0.02]} />
-            <meshBasicMaterial color={ghost ? "#9db4ff" : "#8a4a3a"} />
+          {/* alis */}
+          {([-1, 1] as const).map((s) => (
+            <mesh key={`b${s}`} position={[s * 0.073, 0.075, 0.149]}>
+              <boxGeometry args={[0.055, 0.014, 0.012]} />
+              <meshBasicMaterial color={c.rambutWarna} />
+            </mesh>
+          ))}
+          {/* hidung + senyum */}
+          <mesh position={[0, -0.025, 0.155]}>
+            <boxGeometry args={[0.03, 0.04, 0.03]} />
+            {M(shade(c.kulit, -12))}
           </mesh>
-          {/* pipi */}
-          {[-1, 1].map((s) => (
-            <mesh key={`cheek${s}`} position={[s * 0.12, -0.04, 0.18]}>
-              <sphereGeometry args={[0.03, 6, 5]} />
-              <meshBasicMaterial color="#e5989b" transparent opacity={ghost ? 0.1 : 0.5} />
+          <mesh position={[0, -0.095, 0.15]}>
+            <boxGeometry args={[0.072, 0.016, 0.015]} />
+            <meshBasicMaterial color="#9c4a3c" />
+          </mesh>
+          {([-1, 1] as const).map((s) => (
+            <mesh key={`c${s}`} position={[s * 0.115, -0.055, 0.14]}>
+              <boxGeometry args={[0.05, 0.035, 0.02]} />
+              <meshBasicMaterial color="#e5989b" transparent opacity={0.45} />
             </mesh>
           ))}
           {/* kacamata */}
-          {c.kacamata && !ghost && (
-            <group position={[0, 0.03, 0.19]}>
-              {[-1, 1].map((s) => (
-                <mesh key={`glass${s}`} position={[s * 0.08, 0, 0.02]}>
-                  <torusGeometry args={[0.055, 0.008, 5, 12]} />
-                  <meshBasicMaterial color="#26232e" />
+          {c.kacamata && (
+            <group position={[0, 0.025, 0.162]}>
+              {([-1, 1] as const).map((s) => (
+                <mesh key={s} position={[s * 0.073, 0, 0]}>
+                  <torusGeometry args={[0.052, 0.009, 4, 10]} />
+                  <meshStandardMaterial color="#26232e" roughness={0.4} metalness={0.3} />
                 </mesh>
               ))}
-              <mesh position={[0, 0, 0.02]}>
-                <boxGeometry args={[0.06, 0.012, 0.012]} />
-                <meshBasicMaterial color="#26232e" />
+              <mesh>
+                <boxGeometry args={[0.05, 0.011, 0.011]} />
+                <meshStandardMaterial color="#26232e" />
               </mesh>
             </group>
           )}
 
-          {/* ───── Rambut ───── */}
-          {!hasHijab && !ghost && <Hair model={c.rambutModel} color={c.rambutWarna} />}
-          {ghost && (
-            <mesh position={[0, 0.1, 0]}>
-              <sphereGeometry args={[0.24, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2]} />
-              {M("#1c2130")}
-            </mesh>
-          )}
-
-          {/* ───── Hijab ───── */}
-          {hasHijab && !ghost && (
-            <group>
-              <mesh position={[0, 0.045, -0.03]}>
-                <sphereGeometry args={[0.265, 10, 8]} />
-                {M(c.hijabWarna)}
-              </mesh>
-              {/* buka wajah */}
-              <mesh position={[0, 0.01, 0.09]}>
-                <sphereGeometry args={[0.235, 10, 8]} />
-                {M(c.kulit)}
-              </mesh>
-              <mesh position={[0, -0.3, -0.03]}>
-                <cylinderGeometry args={[0.24, 0.3, c.hijab === "instan" || c.hijab === "bergo" ? 0.35 : 0.22, 8]} />
-                {M(c.hijabWarna)}
-              </mesh>
-              {c.hijab === "segi-empat" && (
-                <mesh position={[0, -0.42, 0.06]} rotation={[0.4, 0, 0]}>
-                  <boxGeometry args={[0.3, 0.3, 0.02]} />
-                  {M(c.hijabWarna)}
-                </mesh>
-              )}
-              {c.hijab === "pashmina" &&
-                [-1, 1].map((s) => (
-                  <mesh key={`pash${s}`} position={[s * 0.22, -0.32, 0]}>
-                    <boxGeometry args={[0.1, 0.4, 0.14]} />
-                    {M(c.hijabWarna)}
-                  </mesh>
-                ))}
-            </group>
-          )}
-
-          {/* ───── Topi / Baret ───── */}
-          {c.topi !== "none" && !hasHijab && (
-            <group position={[0, 0.19, 0]}>
-              {c.topi.startsWith("baret") ? (
-                <mesh rotation={[0.1, 0, 0.3]}>
-                  <cylinderGeometry args={[0.14, 0.17, 0.07, 8]} />
-                  {M(BARET_COLORS[c.topi] ?? "#3d4f31")}
-                </mesh>
-              ) : c.topi === "bucket" ? (
-                <mesh>
-                  <cylinderGeometry args={[0.16, 0.24, 0.16, 8]} />
-                  {M("#f2cc8f")}
-                </mesh>
-              ) : (
-                <group>
-                  <mesh>
-                    <sphereGeometry args={[0.2, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2]} />
-                    {M("#c75146")}
-                  </mesh>
-                  <mesh position={[0, 0, 0.2]} rotation={[Math.PI / 2.4, 0, 0]}>
-                    <cylinderGeometry args={[0.16, 0.16, 0.02, 8]} />
-                    {M("#c75146")}
-                  </mesh>
-                </group>
-              )}
-            </group>
-          )}
+          {!hijab && <Hair model={c.rambutModel} color={c.rambutWarna} wajah={c.wajah} />}
+          {hijab && <Hijab style={c.hijab} color={c.hijabWarna} />}
+          {c.topi !== "none" && !hijab && <Headwear topi={c.topi} />}
+          {c.topi !== "none" && hijab && c.topi.startsWith("baret") && <Headwear topi={c.topi} atasHijab />}
         </group>
       </group>
 
-      {/* ───── Name tag ───── */}
       {nameTag && (
-        <Html position={[0, 1.62, 0]} center distanceFactor={7} zIndexRange={[20, 0]}>
+        <Html position={[0, 2.05, 0]} center distanceFactor={9} zIndexRange={[20, 0]} occlude={false}>
           <div
-            className={`pointer-events-none select-none whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide shadow-lg transition-transform ${
+            className={`pointer-events-none select-none whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wide shadow-lg transition-transform ${
               hover ? "scale-110" : ""
-            } ${isSelf ? "bg-[#f2cc8f] text-[#3a2d18]" : "bg-black/55 text-[#f4ecdd]"} border border-white/15 backdrop-blur-sm`}
+            } ${isSelf ? "border-[#f2cc8f] bg-[#f2cc8f] text-[#3a2d18]" : "border-white/20 bg-black/60 text-[#f4ecdd]"} backdrop-blur-sm`}
           >
             {isSelf ? `★ ${nameTag} · INI KAMU` : nameTag}
             {role === "dosen" ? " · Dosen" : role === "admin" ? " · Admin" : ""}
@@ -391,178 +379,331 @@ export default function Avatar3D({
   );
 }
 
-// ─── Rambut varian ──────────────────────────────────────────────────────────
-function Hair({ model, color }: { model: string; color: string }) {
-  const hairMat = <meshStandardMaterial color={color} roughness={0.9} flatShading />;
-  const scalp = (
-    <mesh position={[0, 0.06, -0.02]} scale={[1.06, 0.92, 1.06]}>
-      <sphereGeometry args={[0.225, 8, 6, 0, Math.PI * 2, 0, Math.PI / 1.4]} />
-      {hairMat}
+// ─── util warna ─────────────────────────────────────────────────────────────
+function shade(hex: string, amt: number) {
+  try {
+    const c = new THREE.Color(hex);
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.getHSL(hsl);
+    c.setHSL(hsl.h, hsl.s, THREE.MathUtils.clamp(hsl.l + amt / 100, 0.04, 0.96));
+    return `#${c.getHexString()}`;
+  } catch {
+    return hex;
+  }
+}
+const faceW = (f: string) => (f === "bulat" ? 1.08 : f === "tirus" ? 0.9 : f === "kotak" ? 1.05 : 1);
+const faceH = (f: string) => (f === "kotak" ? 0.94 : f === "tirus" ? 1.07 : 1);
+
+// ─── benda yang dipegang ────────────────────────────────────────────────────
+function HeldItem({ item, y }: { item: string; y: number }) {
+  const M = (c: string) => <meshStandardMaterial color={c} roughness={0.85} flatShading />;
+  if (item === "buku")
+    return (
+      <group position={[0, y, 0.06]} rotation={[0.35, 0, 0.1]}>
+        <mesh>
+          <boxGeometry args={[0.19, 0.045, 0.25]} />
+          {M("#f6f1e2")}
+        </mesh>
+        <mesh position={[0, 0.028, 0]}>
+          <boxGeometry args={[0.2, 0.02, 0.26]} />
+          {M("#c75146")}
+        </mesh>
+      </group>
+    );
+  if (item === "bunga")
+    return (
+      <group position={[0, y + 0.02, 0.04]}>
+        <mesh position={[0, 0.1, 0]}>
+          <cylinderGeometry args={[0.012, 0.012, 0.26, 5]} />
+          {M("#4f772d")}
+        </mesh>
+        {[
+          [0, 0.26, 0, "#e5989b"],
+          [0.06, 0.22, 0.02, "#f2cc8f"],
+          [-0.06, 0.23, -0.02, "#cdb4f5"],
+        ].map(([x, yy, z, col], i) => (
+          <mesh key={i} position={[x as number, yy as number, z as number]}>
+            <icosahedronGeometry args={[0.045, 0]} />
+            {M(col as string)}
+          </mesh>
+        ))}
+      </group>
+    );
+  if (item === "trofi")
+    return (
+      <group position={[0, y + 0.03, 0.04]}>
+        <mesh position={[0, 0.08, 0]}>
+          <cylinderGeometry args={[0.055, 0.025, 0.11, 7]} />
+          <meshStandardMaterial color="#e9a84a" metalness={0.65} roughness={0.28} flatShading />
+        </mesh>
+        <mesh position={[0, 0.01, 0]}>
+          <boxGeometry args={[0.09, 0.05, 0.09]} />
+          {M("#5c4033")}
+        </mesh>
+      </group>
+    );
+  if (item === "pointer")
+    return (
+      <mesh position={[0, y + 0.08, 0.02]} rotation={[0.5, 0, 0.12]}>
+        <cylinderGeometry args={[0.011, 0.011, 0.5, 5]} />
+        {M("#e8e2d4")}
+      </mesh>
+    );
+  return null;
+}
+
+// ─── rambut ─────────────────────────────────────────────────────────────────
+function Hair({ model, color, wajah }: { model: string; color: string; wajah: string }) {
+  const m = <meshStandardMaterial color={color} roughness={0.95} flatShading />;
+  const fw = faceW(wajah);
+  // batok rambut membungkus kepala: atas + belakang + sisi, menyisakan wajah
+  const cap = (
+    <group>
+      <mesh position={[0, 0.095, -0.004]} scale={[fw, 1, 1]}>
+        <boxGeometry args={[0.305, 0.14, 0.29]} />
+        {m}
+      </mesh>
+      <mesh position={[0, 0.0, -0.125]} scale={[fw, 1, 1]}>
+        <boxGeometry args={[0.3, 0.26, 0.05]} />
+        {m}
+      </mesh>
+      {([-1, 1] as const).map((s) => (
+        <mesh key={s} position={[s * 0.142 * fw, 0.015, -0.02]}>
+          <boxGeometry args={[0.03, 0.24, 0.26]} />
+          {m}
+        </mesh>
+      ))}
+    </group>
+  );
+  const poni = (
+    <mesh position={[0, 0.095, 0.082]} scale={[fw, 1, 1]}>
+      <boxGeometry args={[0.3, 0.14, 0.13]} />
+      {m}
     </mesh>
   );
+  const sisi = ([-1, 1] as const).map((s) => (
+    <mesh key={s} position={[s * 0.15 * fw, -0.06, -0.03]}>
+      <boxGeometry args={[0.045, 0.3, 0.26]} />
+      {m}
+    </mesh>
+  ));
+
   switch (model) {
     case "panjang-lurus":
-      return (
-        <group>
-          {scalp}
-          <mesh position={[0, -0.18, -0.16]}>
-            <boxGeometry args={[0.4, 0.52, 0.12]} />
-            {hairMat}
-          </mesh>
-        </group>
-      );
     case "panjang-bergelombang":
       return (
         <group>
-          {scalp}
-          <mesh position={[0, -0.16, -0.16]}>
-            <boxGeometry args={[0.42, 0.5, 0.12]} />
-            {hairMat}
+          {cap}
+          {poni}
+          {sisi}
+          <mesh position={[0, -0.16, -0.14]}>
+            <boxGeometry args={[0.37 * fw, 0.56, 0.11]} />
+            {m}
           </mesh>
-          {[-1, 1].map((s) => (
-            <mesh key={s} position={[s * 0.2, -0.3, -0.1]}>
-              <sphereGeometry args={[0.07, 6, 5]} />
-              {hairMat}
-            </mesh>
-          ))}
         </group>
       );
     case "ponytail":
       return (
         <group>
-          {scalp}
-          <mesh position={[0, 0.08, -0.24]}>
-            <sphereGeometry args={[0.08, 6, 5]} />
-            {hairMat}
+          {cap}
+          {poni}
+          <mesh position={[0, 0.04, -0.175]}>
+            <boxGeometry args={[0.13, 0.13, 0.08]} />
+            {m}
           </mesh>
-          <mesh position={[0, -0.12, -0.26]}>
-            <boxGeometry args={[0.1, 0.38, 0.08]} />
-            {hairMat}
+          <mesh position={[0, -0.16, -0.21]} rotation={[0.22, 0, 0]}>
+            <boxGeometry args={[0.11, 0.44, 0.09]} />
+            {m}
           </mesh>
-        </group>
-      );
-    case "twin-tails":
-      return (
-        <group>
-          {scalp}
-          {[-1, 1].map((s) => (
-            <mesh key={s} position={[s * 0.26, -0.16, -0.06]}>
-              <boxGeometry args={[0.09, 0.36, 0.09]} />
-              {hairMat}
-            </mesh>
-          ))}
         </group>
       );
     case "bob":
       return (
-        <mesh position={[0, 0.045, -0.02]} scale={[1.14, 1, 1.1]}>
-          <sphereGeometry args={[0.23, 8, 6, 0, Math.PI * 2, 0, Math.PI / 1.25]} />
-          {hairMat}
-        </mesh>
+        <group>
+          {cap}
+          {poni}
+          <mesh position={[0, -0.04, -0.015]} scale={[fw, 1, 1]}>
+            <boxGeometry args={[0.355, 0.26, 0.33]} />
+            {m}
+          </mesh>
+        </group>
+      );
+    case "lob":
+      return (
+        <group>
+          {cap}
+          {poni}
+          {sisi}
+          <mesh position={[0, -0.085, -0.1]}>
+            <boxGeometry args={[0.36 * fw, 0.3, 0.17]} />
+            {m}
+          </mesh>
+        </group>
       );
     case "cepol":
       return (
         <group>
-          {scalp}
-          <mesh position={[0, 0.26, -0.05]}>
-            <sphereGeometry args={[0.09, 6, 5]} />
-            {hairMat}
-          </mesh>
-        </group>
-      );
-    case "layer":
-      return (
-        <group>
-          {scalp}
-          <mesh position={[0, -0.1, -0.14]}>
-            <boxGeometry args={[0.38, 0.34, 0.1]} />
-            {hairMat}
-          </mesh>
-          <mesh position={[0, 0.02, 0.18]} rotation={[0.5, 0, 0]}>
-            <boxGeometry args={[0.3, 0.12, 0.06]} />
-            {hairMat}
+          {cap}
+          {poni}
+          <mesh position={[0, 0.24, -0.06]}>
+            <icosahedronGeometry args={[0.095, 0]} />
+            {m}
           </mesh>
         </group>
       );
     case "keriting":
       return (
         <group>
-          {scalp}
+          {cap}
           {[
-            [0.16, 0.14, 0],
-            [-0.16, 0.14, 0],
-            [0, 0.24, -0.06],
-            [0.1, 0.2, 0.12],
-            [-0.1, 0.2, 0.12],
+            [0.15, 0.17, 0.05],
+            [-0.15, 0.17, 0.05],
+            [0, 0.22, -0.11],
+            [0.11, 0.13, 0.16],
+            [-0.11, 0.13, 0.16],
+            [0.18, 0.02, -0.08],
+            [-0.18, 0.02, -0.08],
           ].map((p, i) => (
             <mesh key={i} position={p as [number, number, number]}>
-              <sphereGeometry args={[0.07, 6, 5]} />
-              {hairMat}
+              <icosahedronGeometry args={[0.075, 0]} />
+              {m}
             </mesh>
           ))}
         </group>
       );
-    case "lob":
-      return (
-        <group>
-          {scalp}
-          <mesh position={[0, -0.08, -0.15]}>
-            <boxGeometry args={[0.38, 0.28, 0.1]} />
-            {hairMat}
-          </mesh>
-        </group>
-      );
-    case "wolf-cut":
-      return (
-        <group>
-          {scalp}
-          <mesh position={[0, -0.06, -0.15]}>
-            <boxGeometry args={[0.36, 0.24, 0.1]} />
-            {hairMat}
-          </mesh>
-          <mesh position={[0, 0.16, 0.06]}>
-            <sphereGeometry args={[0.1, 6, 5]} />
-            {hairMat}
-          </mesh>
-        </group>
-      );
     case "undercut":
       return (
-        <mesh position={[0, 0.09, 0]} scale={[0.95, 0.75, 1]}>
-          <sphereGeometry args={[0.21, 8, 6, 0, Math.PI * 2, 0, Math.PI / 1.6]} />
-          {hairMat}
-        </mesh>
-      );
-    case "comma":
-    case "curtain":
-      return (
         <group>
-          {scalp}
-          <mesh position={[model === "comma" ? 0.06 : -0.06, 0.1, 0.17]} rotation={[0.4, 0, model === "comma" ? -0.3 : 0.3]}>
-            <boxGeometry args={[0.14, 0.1, 0.05]} />
-            {hairMat}
+          <mesh position={[0, 0.105, -0.004]} scale={[fw * 0.96, 1, 0.96]}>
+            <boxGeometry args={[0.3, 0.12, 0.285]} />
+            {m}
           </mesh>
         </group>
-      );
-    case "mohawk-tipis":
-      return (
-        <mesh position={[0, 0.16, 0]} rotation={[0.1, 0, 0]}>
-          <boxGeometry args={[0.06, 0.1, 0.34]} />
-          {hairMat}
-        </mesh>
       );
     case "side-part":
       return (
         <group>
-          {scalp}
-          <mesh position={[0.08, 0.12, 0.14]} rotation={[0.3, 0, -0.2]}>
-            <boxGeometry args={[0.18, 0.08, 0.06]} />
-            {hairMat}
+          {cap}
+          <mesh position={[0.05, 0.085, 0.142]} rotation={[0, 0, -0.18]} scale={[fw, 1, 1]}>
+            <boxGeometry args={[0.24, 0.075, 0.05]} />
+            {m}
           </mesh>
+        </group>
+      );
+    case "curtain":
+      return (
+        <group>
+          {cap}
+          {([-1, 1] as const).map((s) => (
+            <mesh key={s} position={[s * 0.08, 0.07, 0.145]} rotation={[0, 0, s * 0.3]}>
+              <boxGeometry args={[0.15, 0.1, 0.05]} />
+              {m}
+            </mesh>
+          ))}
         </group>
       );
     case "pendek":
     default:
-      return scalp;
+      return (
+        <group>
+          {cap}
+          <mesh position={[0, 0.085, 0.09]} scale={[fw, 1, 1]}>
+            <boxGeometry args={[0.3, 0.11, 0.12]} />
+            {m}
+          </mesh>
+        </group>
+      );
   }
+}
+
+// ─── hijab ──────────────────────────────────────────────────────────────────
+function Hijab({ style, color }: { style: string; color: string }) {
+  const m = <meshStandardMaterial color={color} roughness={0.93} flatShading />;
+  return (
+    <group>
+      {/* penutup kepala */}
+      <mesh position={[0, 0.07, -0.02]}>
+        <boxGeometry args={[0.36, 0.34, 0.345]} />
+        {m}
+      </mesh>
+      {/* bukaan wajah */}
+      <mesh position={[0, -0.01, 0.055]}>
+        <boxGeometry args={[0.245, 0.27, 0.26]} />
+        <meshStandardMaterial color="#00000000" transparent opacity={0} depthWrite={false} />
+      </mesh>
+      {([-1, 1] as const).map((s) => (
+        <mesh key={s} position={[s * 0.157, -0.02, 0.09]}>
+          <boxGeometry args={[0.055, 0.3, 0.19]} />
+          {m}
+        </mesh>
+      ))}
+      <mesh position={[0, 0.15, 0.1]}>
+        <boxGeometry args={[0.33, 0.1, 0.16]} />
+        {m}
+      </mesh>
+      {/* bagian bawah menutupi leher & bahu */}
+      <mesh position={[0, -0.3, -0.03]}>
+        <boxGeometry args={[0.37, 0.3, 0.33]} />
+        {m}
+      </mesh>
+      {style === "pashmina" &&
+        ([-1, 1] as const).map((s) => (
+          <mesh key={s} position={[s * 0.18, -0.42, 0.02]} rotation={[0, 0, s * 0.1]}>
+            <boxGeometry args={[0.1, 0.34, 0.16]} />
+            {m}
+          </mesh>
+        ))}
+      {style === "segi-empat" && (
+        <mesh position={[0, -0.46, 0.08]} rotation={[0.3, 0, 0]}>
+          <boxGeometry args={[0.3, 0.26, 0.03]} />
+          {m}
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+// ─── topi & baret ───────────────────────────────────────────────────────────
+function Headwear({ topi, atasHijab }: { topi: string; atasHijab?: boolean }) {
+  const y = atasHijab ? 0.26 : 0.2;
+  if (topi.startsWith("baret")) {
+    const col = BARET_COLORS[topi] ?? "#3d4f31";
+    return (
+      <group position={[0, y, 0]} rotation={[0.08, 0, 0.26]}>
+        <mesh>
+          <cylinderGeometry args={[0.16, 0.185, 0.07, 10]} />
+          <meshStandardMaterial color={col} roughness={0.92} flatShading />
+        </mesh>
+        <mesh position={[0.12, 0.02, 0.1]}>
+          <boxGeometry args={[0.05, 0.05, 0.01]} />
+          <meshStandardMaterial color="#e9c46a" metalness={0.6} roughness={0.3} />
+        </mesh>
+      </group>
+    );
+  }
+  if (topi === "bucket")
+    return (
+      <group position={[0, y - 0.02, 0]}>
+        <mesh>
+          <cylinderGeometry args={[0.17, 0.19, 0.14, 10]} />
+          <meshStandardMaterial color="#e9c46a" roughness={0.9} flatShading />
+        </mesh>
+        <mesh position={[0, -0.07, 0]}>
+          <cylinderGeometry args={[0.27, 0.27, 0.025, 12]} />
+          <meshStandardMaterial color="#dcb45a" roughness={0.9} flatShading />
+        </mesh>
+      </group>
+    );
+  return (
+    <group position={[0, y - 0.03, 0]}>
+      <mesh>
+        <boxGeometry args={[0.33, 0.12, 0.31]} />
+        <meshStandardMaterial color="#c75146" roughness={0.9} flatShading />
+      </mesh>
+      <mesh position={[0, -0.05, 0.21]}>
+        <boxGeometry args={[0.31, 0.03, 0.16]} />
+        <meshStandardMaterial color="#a8423b" roughness={0.9} flatShading />
+      </mesh>
+    </group>
+  );
 }

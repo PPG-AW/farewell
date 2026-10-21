@@ -4,6 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html, Sparkles, useCursor } from "@react-three/drei";
 import * as THREE from "three";
+import { useInteractable } from "./player";
 
 export function Ground({ size = 80, color = "#6d8a4f", y = -0.01 }: { size?: number; color?: string; y?: number }) {
   return (
@@ -224,6 +225,7 @@ export function GlowMarker({
   onClick,
   read,
   isLetter = true,
+  id,
 }: {
   position: [number, number, number];
   color?: string;
@@ -231,10 +233,12 @@ export function GlowMarker({
   onClick: () => void;
   read?: boolean;
   isLetter?: boolean;
+  id?: string;
 }) {
   const ref = useRef<THREE.Group>(null);
   const [hover, setHover] = useState(false);
   useCursor(hover);
+  useInteractable(id ?? `mk-${label}-${position.join(",")}`, position, label, onClick, isLetter ? "surat" : "narasi");
   useFrame(({ clock }) => {
     if (!ref.current) return;
     const t = clock.getElapsedTime();
@@ -313,6 +317,7 @@ export function PortalRing({
   const inner = useRef<THREE.Mesh>(null);
   const [hover, setHover] = useState(false);
   useCursor(hover);
+  useInteractable(`portal-${label}-${position.join(",")}`, position, label, onClick, "portal");
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     if (ring.current) ring.current.rotation.z = t * 0.5;

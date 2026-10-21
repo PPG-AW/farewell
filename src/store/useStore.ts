@@ -77,6 +77,8 @@ type Store = {
   listOpen: boolean;
   readSet: string[];
   toasts: Toast[];
+  nearby: { id: string; label: string; kind: string } | null;
+  setNearby: (n: { id: string; label: string; kind: string } | null) => void;
 
   loadSession: () => void;
   setSession: (s: SessionInfo | null) => void;
@@ -117,6 +119,8 @@ export const useStore = create<Store>((set, get) => ({
   listOpen: false,
   readSet: [],
   toasts: [],
+  nearby: null,
+  setNearby: (n) => set({ nearby: n }),
 
   loadSession: () => {
     try {
